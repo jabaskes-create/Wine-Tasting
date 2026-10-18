@@ -102,7 +102,7 @@ module.exports = async (req, res) => {
     if (!m) return res.status(400).json({ error: 'bad_images' });
     blocks.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
   }
-  blocks.push({ type: 'text', text: 'These are photos of one wine bottle. Record the label details.' });
+  blocks.push({ type: 'text', text: 'These are photos of one wine bottle. Record the label details by calling the record_wine tool. Always call the tool, even if nothing is readable.' });
 
   let upstream;
   try {
@@ -118,7 +118,7 @@ module.exports = async (req, res) => {
         max_tokens: 600,
         system: SYSTEM,
         tools: [TOOL],
-        tool_choice: { type: 'tool', name: TOOL.name },
+        tool_choice: { type: 'auto' },
         messages: [{ role: 'user', content: blocks }]
       })
     });
