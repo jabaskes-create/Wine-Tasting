@@ -260,7 +260,7 @@ function sortedTastings(w){return w.tastings.slice().sort(function(a,b){return (
 function lastTasting(w){return sortedTastings(w)[0];}
 
 var toastTimer;
-function toast(m){var el=document.getElementById('toast');el.textContent=m;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.hidden=true;},2600);}
+function toast(m,ms){var el=document.getElementById('toast');el.textContent=m;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.hidden=true;},ms||2600);}
 
 function persist(){
   try{localStorage.setItem(KEY,JSON.stringify(S.wines));}
@@ -583,13 +583,13 @@ function startScan(){
       }else if(x.status===401){
         S.scanning=false;toast('Scan passcode needed or wrong. Set it under Tools on the Cellar page.');render(true);
       }else{
-        S.scanning=false;toast('Could not read that label. Try a clearer photo, or use a sample bottle.');render(true);
+        S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+'). Try a clearer photo, or use a sample bottle.',12000);render(true);
       }
     })
-    .catch(function(){
+    .catch(function(err){
       clearTimeout(timer);
       if(!S.scanning||tok!==S.tok)return;
-      S.scanning=false;toast('Could not reach the scan service. Check your connection and try again.');render(true);
+      S.scanning=false;toast('Could not reach the scan service ('+((err&&err.name)||'error')+'). Check your connection and try again.',9000);render(true);
     });
 }
 
