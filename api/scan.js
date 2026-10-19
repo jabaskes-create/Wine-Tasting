@@ -114,7 +114,7 @@ async function verifyUser(header, apiKey) {
   }
 }
 
-module.exports = async (req, res) => {
+async function handle(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
@@ -159,6 +159,83 @@ module.exports = async (req, res) => {
     for (const ex of examples) {
       content.push({ type: 'image', source: { type: 'base64', media_type: ex.media, data: ex.data } });
       content.push({ type: 'text', text: 'Correct record for the label above: ' + JSON.stringify(ex.wine) });
+    }
+    content.push({ type: 'text', text: 'Now the bottle to read. Its photos follow.' });
+  }
+  content.push(...blocks);
+  content.push({ type: 'text', text: 'These are photos of one wine bottle. Record the label details by calling the record_wine tool. Always call the tool, even if nothing is readable.' });
+
+  // One call to the model. Returns { data } on success, or { fail: <response to send> }.
+  const ask = async (parts) => {
+    let upstream;
+    try {
+      upstream = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 600,
+          system: SYSTEM,
+          tools: [TOOL],
+          tool_choice: { type: 'auto' },
+          messages: [{ role: 'user', content: parts }]
+        })
+      });
+    } catch (e) {
+      console.error('scan: network error', e && e.message);
+      return { fail: [502, { error: 'upstream_unreachable' }] };
+    }
+    if (!upstream.ok) {
+      let raw = '';
+      try { raw = await upstream.text(); } catch (e) { /* ignore */ }
+      let msg = '';
+      try { const j = JSON.parse(raw); msg = (j.error && j.error.message) || ''; } catch (e) { msg = raw; }
+      msg = String(msg).replace(/\s+/g, ' ').trim().slice(0, 160);
+      console.error('scan: Anthropic API returned', upstream.status, raw.slice(0, 300));
+      return { fail: [502, { error: msg ? 'upstream_error: ' + msg : 'upstream_error', status: upstream.status }] };
+    }
+    try { return { data: await upstream.json() }; } catch (e) { return { fail: [502, { error: 'upstream_bad_reply' }] }; }
+  };
+  const toolBlock = (d) => (d.content || []).find((b) => b.type === 'tool_use');
+
+  let result = await ask(content);
+  if (result.fail) return res.status(result.fail[0]).json(result.fail[1]);
+  let block = toolBlock(result.data);
+  let wine = tidy(block && block.input);
+  if (!block || !Object.values(wine).some(Boolean)) {
+    // The model answered in words instead of recording the label, or recorded nothing. Ask once more.
+    const again = await ask(content.concat([{ type: 'text', text: 'You must call the record_wine tool now with whatever you can read on the label. Use empty strings only for details that are not printed.' }]));
+    if (again.fail) return res.status(again.fail[0]).json(again.fail[1]);
+    result = again;
+    block = toolBlock(result.data);
+    wine = tidy(block && block.input);
+  }
+  if (!block || !Object.values(wine).some(Boolean)) {
+    const said = ((result.data.content || []).find((b) => b.type === 'text') || {}).text || '';
+    const note = String(said).replace(/\s+/g, ' ').trim().slice(0, 160);
+    console.error('scan: nothing recorded. stop_reason:', result.data.stop_reason, 'text:', note, 'block:', !!block);
+    return res.status(422).json({ error: 'no_label', note: note || (block ? 'empty record' : 'no tool call'), stop: result.data.stop_reason || '' });
+  }
+  const unsure = [];
+  const rawUnsure = block.input && block.input.unsure;
+  if (Array.isArray(rawUnsure)) for (const k of rawUnsure) if (FIELDS.includes(k) && wine[k] && !unsure.includes(k)) unsure.push(k);
+  return res.status(200).json({ wine, unsure });
+}
+
+module.exports = async (req, res) => {
+  try {
+    return await handle(req, res);
+  } catch (e) {
+    console.error('scan: crashed', e && e.stack);
+    const m = String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 160);
+    if (!res.headersSent) return res.status(502).json({ error: 'upstream_error: server crashed: ' + m });
+  }
+};
+   content.push({ type: 'text', text: 'Correct record for the label above: ' + JSON.stringify(ex.wine) });
     }
     content.push({ type: 'text', text: 'Now the bottle to read. Its photos follow.' });
   }
