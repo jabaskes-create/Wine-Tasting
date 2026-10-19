@@ -244,7 +244,7 @@ var RESEARCH={
 };
 
 /* ---- Small helpers ---- */
-var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false};
+var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
@@ -263,6 +263,7 @@ var toastTimer;
 function toast(m,ms){var el=document.getElementById('toast');el.textContent=m;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.hidden=true;},ms||2600);}
 
 function persist(){
+  if(C.on){cloudSync();return;}
   try{localStorage.setItem(KEY,JSON.stringify(S.wines));}
   catch(e){if(!S.warned){S.warned=true;toast('This browser would not save. Your cellar lasts until you close the page.');}}
 }
@@ -428,17 +429,17 @@ function listView(){
   var present=TYPES.filter(function(t){return S.wines.some(function(w){return w.type===t;});});
   if(S.type!=='all'&&present.indexOf(S.type)===-1)S.type='all';
   var hasEx=S.wines.some(function(w){return w.example;});
-  var passField='<div class="field"><label class="flabel" for="passcode">Scan passcode (only if you set one in Vercel)</label><input id="passcode" type="password" data-bind="p.v" value="'+esc(S.pass)+'" autocomplete="off" placeholder="Leave empty if none"></div>';
+  var passField=S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<div class="field"><label class="flabel" for="passcode">Scan passcode (only if you set one in Vercel)</label><input id="passcode" type="password" data-bind="p.v" value="'+esc(S.pass)+'" autocomplete="off" placeholder="Leave empty if none"></div>';
   var csvPanel=S.csv?'<div class="field"><label class="flabel" for="csvbox">Copy this text. Your browser blocked the copy button.</label><textarea id="csvbox" class="csv" readonly>'+esc(S.csv)+'</textarea></div>':'';
   return '<div class="wrap">'+
     '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><button class="btn btn-primary" data-act="go-scan">Scan a label</button></header>'+
-    '<p class="demo"><span class="tag tag-edited">Demo</span><span>Label reading switches on once the scan function has an API key. Until then, scans return sample wines. Saved wines stay in this browser.</span></p>'+
+    (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
     '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="csv">Copy as CSV</button>'+
-    (hasEx?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
-    '<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button></div>'+passField+csvPanel+'</section>'+
+    ((hasEx&&!S.user)?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
+    (S.user?'<button class="btn btn-ghost" data-act="sign-out">Sign out</button>':'<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button>')+'</div>'+passField+csvPanel+'</section>'+
   '</div>';
 }
 
@@ -466,7 +467,7 @@ function reviewView(){
   return '<div class="wrap">'+
     '<button class="back" data-act="'+(edit?'cancel-edit':'go-list')+'">← '+(edit?'Back to wine':'Cancel')+'</button>'+
     '<h1 class="h2">'+(edit?'Edit wine':'Review the label')+'</h1>'+
-    (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.</p>':'<p class="notice"><strong>Sample result.</strong> Label reading is not switched on, so this is a made-up bottle. Check each field before saving.</p>'))+
+    (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
     '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
     '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Looks up likely grapes, producer background, drink window and price range. Each result is tagged Researched.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
@@ -509,6 +510,9 @@ function detailView(){
 
 function render(keep){
   var y=window.scrollY,html;
+  if(S.cloud==='loading'){app.innerHTML='<div class="wrap"><h1>Bottle Notes</h1><p class="muted" role="status">Loading…</p></div>';return;}
+  if(S.cloud==='auth'){app.innerHTML=authView();return;}
+  if(S.cloud==='error'){app.innerHTML=errorView();return;}
   if(S.view==='scan')html=scanView();
   else if(S.view==='review'&&S.draft)html=reviewView();
   else if(S.view==='detail')html=detailView();
@@ -566,7 +570,7 @@ function startScan(){
   var timer=setTimeout(function(){ctl.abort();},60000);
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
-  fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs}),signal:ctl.signal})
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
       clearTimeout(timer);
@@ -581,7 +585,9 @@ function startScan(){
         toast('Label reading is not switched on yet. Showing a sample bottle.');
         finishScan(sampleDraft());
       }else if(x.status===401){
-        S.scanning=false;toast('Scan passcode needed or wrong. Set it under Tools on the Cellar page.');render(true);
+        S.scanning=false;toast(S.user?'Your sign-in expired. Reload the page and sign in again.':'Scan passcode needed or wrong. Set it under Tools on the Cellar page.');render(true);
+      }else if(x.status===403){
+        S.scanning=false;toast(x.j&&x.j.error==='unverified'?'Verify your email first. Check your inbox for the link, then tap I verified it on the Cellar page.':'This account is not approved to scan labels yet. Ask the owner to add your email.',9000);render(true);
       }else{
         S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+'). Try a clearer photo, or use a sample bottle.',12000);render(true);
       }
@@ -701,6 +707,27 @@ var ACT={
     }catch(e){fallback();}
   },
   'clear-ex':function(){S.wines=S.wines.filter(function(w){return !w.example;});persist();toast('Examples removed.');render(true);},
+  'sign-out':function(){if(C.auth)C.m.auth.signOut(C.auth);},
+  'auth-toggle':function(){S.a.mode=S.a.mode==='in'?'up':'in';S.a.err='';S.a.info='';render(false);},
+  'auth-google':function(){authGo(function(){var p=new C.m.auth.GoogleAuthProvider();return C.m.auth.signInWithPopup(C.auth,p);});},
+  'auth-reset':function(){
+    if(!S.a.email.trim()){S.a.err='Type your email first, then tap Forgot password.';S.a.info='';render(true);return;}
+    authGo(function(){return C.m.auth.sendPasswordResetEmail(C.auth,S.a.email.trim()).then(function(){S.a.info='Password reset email sent. Check your inbox.';});});
+  },
+  'verify-check':function(){
+    var u=C.auth&&C.auth.currentUser;if(!u)return;
+    u.reload().then(function(){return u.getIdToken(true);}).then(function(){S.user=u;toast(u.emailVerified?'Email verified.':'Not verified yet. Open the link in the email first.');render(true);}).catch(function(){toast('Could not check. Try again.');});
+  },
+  'verify-resend':function(){
+    var u=C.auth&&C.auth.currentUser;if(!u)return;
+    C.m.auth.sendEmailVerification(u).then(function(){toast('Verification email sent.');}).catch(function(){toast('Could not send it. Wait a minute and try again.');});
+  },
+  'import-yes':function(){
+    var list=S.importLocal||[];S.importLocal=null;
+    list.forEach(function(w){delete w.example;S.wines.push(w);});
+    persist();importDone();toast('Imported '+list.length+(list.length===1?' wine.':' wines.'));render(true);
+  },
+  'import-no':function(){S.importLocal=null;importDone();render(true);},
   'reset':function(){
     if(S.confirm!=='reset'){S.confirm='reset';render(true);return;}
     S.wines=seeds();S.q='';S.type='all';S.csv='';S.confirm='';persist();toast('Demo reset.');render(true);
@@ -724,6 +751,7 @@ function refreshTag(k){
 }
 function bindSet(path,val){
   var parts=path.split('.'),root=parts[0],key=parts[1],obj=null;
+  if(root==='a'){S.a[key]=val;return;}
   if(root==='p'){S.pass=val;try{localStorage.setItem('bottle-notes-pass',val);}catch(e){}return;}
   if(root==='d')obj=S.draft;else if(root==='t')obj=S.draft&&S.draft.t;else if(root==='nt')obj=S.nt;
   if(!obj)return;
@@ -751,13 +779,161 @@ app.addEventListener('change',function(e){
   else onBind(e);
 });
 
+/* ---- Accounts and cloud cellar ---- */
+var C={m:null,auth:null,db:null,snap:{},chain:Promise.resolve(),on:false};
+var IMPORT_FLAG='bottle-notes-import-done';
+function idToken(){
+  var u=C.auth&&C.auth.currentUser;
+  if(!C.on||!u)return Promise.resolve('');
+  return u.getIdToken().catch(function(){return '';});
+}
+function importDone(){try{localStorage.setItem(IMPORT_FLAG,'1');}catch(e){}}
+function importCard(){
+  var n=S.importLocal?S.importLocal.length:0;
+  if(!n)return '';
+  return '<div class="notice"><p><strong>Wines found in this browser.</strong> Copy '+n+(n===1?' wine':' wines')+' into your account?</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="import-yes">Import them</button><button class="btn" data-act="import-no">No thanks</button></div></div>';
+}
+function verifyCard(){
+  var u=C.auth&&C.auth.currentUser;
+  if(!u||u.emailVerified)return '';
+  return '<div class="notice"><p><strong>Verify your email.</strong> We sent a link to '+esc(u.email||'')+'. Scanning needs a verified email.</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="verify-check">I verified it</button><button class="btn" data-act="verify-resend">Send again</button></div></div>';
+}
+function authMsg(e){
+  var c=(e&&e.code)||'';
+  var m={
+    'auth/invalid-credential':'That email and password do not match.',
+    'auth/wrong-password':'That email and password do not match.',
+    'auth/user-not-found':'That email and password do not match.',
+    'auth/invalid-email':'That email address does not look right.',
+    'auth/email-already-in-use':'That email already has an account. Try signing in.',
+    'auth/weak-password':'Use at least 6 characters for the password.',
+    'auth/missing-password':'Type your password.',
+    'auth/too-many-requests':'Too many tries. Wait a few minutes and try again.',
+    'auth/network-request-failed':'No connection. Check your internet and try again.',
+    'auth/operation-not-allowed':'That sign-in method is not switched on in Firebase yet.',
+    'auth/unauthorized-domain':'This site address is not on the Firebase authorized domains list yet.',
+    'auth/popup-blocked':'Your browser blocked the Google window. Allow pop-ups and try again.',
+    'auth/popup-closed-by-user':'',
+    'auth/cancelled-popup-request':''
+  };
+  return Object.prototype.hasOwnProperty.call(m,c)?m[c]:'Could not sign in ('+(c||'error')+').';
+}
+function authGo(fn){
+  if(S.a.busy)return;
+  S.a.busy=true;S.a.err='';S.a.info='';render(true);
+  var p;try{p=Promise.resolve(fn());}catch(e){p=Promise.reject(e);}
+  p.catch(function(e){S.a.err=authMsg(e);}).then(function(){S.a.busy=false;if(S.cloud==='auth')render(true);});
+}
+function authView(){
+  var up=S.a.mode==='up';
+  return '<div class="wrap"><header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+(up?'Create your account':'Sign in to your cellar')+'</p></div></header>'+
+    '<form data-auth class="wrap" style="gap:12px" novalidate>'+
+    (S.a.err?'<p class="notice" role="alert">'+esc(S.a.err)+'</p>':'')+(S.a.info?'<p class="notice" role="status">'+esc(S.a.info)+'</p>':'')+
+    '<div class="field"><label class="flabel" for="a-email">Email</label><input id="a-email" type="email" inputmode="email" autocomplete="email" data-bind="a.email" value="'+esc(S.a.email)+'"></div>'+
+    '<div class="field"><label class="flabel" for="a-pw">Password</label><input id="a-pw" type="password" autocomplete="'+(up?'new-password':'current-password')+'" data-bind="a.pw" value="'+esc(S.a.pw)+'"></div>'+
+    '<button class="btn btn-primary wide" type="submit"'+(S.a.busy?' disabled':'')+'>'+(S.a.busy?'One moment…':(up?'Create account':'Sign in'))+'</button>'+
+    '</form>'+
+    '<button class="btn wide" data-act="auth-google"'+(S.a.busy?' disabled':'')+'>Continue with Google</button>'+
+    '<div class="trow"><button class="btn btn-ghost" data-act="auth-toggle">'+(up?'I already have an account':'Create an account')+'</button>'+(up?'':'<button class="btn btn-ghost" data-act="auth-reset">Forgot password</button>')+'</div>'+
+    '<p class="muted">Your wines are saved to your account and stay private to you.</p></div>';
+}
+function errorView(){
+  return '<div class="wrap"><h1>Bottle Notes</h1><p class="notice" role="alert">'+esc(S.a.err||'Something went wrong loading your account.')+'</p><button class="btn btn-primary" data-act="reload">Try again</button></div>';
+}
+ACT['reload']=function(){location.reload();};
+
+function submitAuth(){
+  var ee=document.getElementById('a-email'),pe=document.getElementById('a-pw');
+  if(ee)S.a.email=ee.value;if(pe)S.a.pw=pe.value;
+  var email=S.a.email.trim(),pw=S.a.pw;
+  if(!email||!pw){S.a.err='Type your email and password.';render(true);return;}
+  authGo(function(){
+    var A=C.m.auth;
+    if(S.a.mode==='up')return A.createUserWithEmailAndPassword(C.auth,email,pw).then(function(cred){return A.sendEmailVerification(cred.user).catch(function(){});});
+    return A.signInWithEmailAndPassword(C.auth,email,pw);
+  });
+}
+
+function cloudSync(){
+  var F=C.m.fs,uid=S.user.uid,cur={},ops=[];
+  S.wines.forEach(function(w){cur[w.id]=JSON.stringify(w);});
+  S.wines.forEach(function(w){if(C.snap[w.id]!==cur[w.id])ops.push({id:w.id,json:cur[w.id]});});
+  Object.keys(C.snap).forEach(function(id){if(!(id in cur))ops.push({id:id,del:true});});
+  if(!ops.length)return;
+  C.chain=C.chain.then(function(){
+    return Promise.all(ops.map(function(o){
+      var ref=F.doc(C.db,'users',uid,'wines',o.id);
+      var p=o.del?F.deleteDoc(ref):F.setDoc(ref,JSON.parse(o.json));
+      return p.then(function(){if(o.del)delete C.snap[o.id];else C.snap[o.id]=o.json;});
+    }));
+  }).catch(function(){toast('Could not save to your account. Check your connection. It will try again on your next change.',7000);});
+}
+function loadCloud(uid){
+  var F=C.m.fs;
+  return F.getDocs(F.collection(C.db,'users',uid,'wines')).then(function(q){
+    var list=[];C.snap={};
+    q.forEach(function(d){var w=d.data();if(!w.id)w.id=d.id;if(!Array.isArray(w.tastings))w.tastings=[];list.push(w);C.snap[w.id]=JSON.stringify(w);});
+    list.sort(function(a,b){return (b.added||0)-(a.added||0);});
+    S.wines=list;
+  });
+}
+function localLeftovers(){
+  var done=false;try{done=!!localStorage.getItem(IMPORT_FLAG);}catch(e){}
+  if(done)return null;
+  var saved=null;try{saved=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+  if(!Array.isArray(saved))return null;
+  var mine=saved.filter(function(w){return w&&!w.example&&w.id;});
+  return mine.length?mine:null;
+}
+function onUser(u){
+  if(!u){
+    C.on=false;S.user=null;S.wines=[];S.sel=null;S.draft=null;S.importLocal=null;C.snap={};S.view='list';S.q='';S.type='all';
+    S.a.pw='';S.cloud='auth';render(false);return;
+  }
+  S.user=u;S.cloud='loading';render(false);
+  loadCloud(u.uid).then(function(){
+    C.on=true;
+    var left=localLeftovers();
+    S.importLocal=(left&&!S.wines.length)?left:null;
+    if(left&&S.wines.length)importDone();
+    S.cloud='ready';S.view='list';render(false);window.scrollTo(0,0);
+  }).catch(function(e){
+    C.on=false;S.cloud='error';
+    S.a.err=(e&&e.code==='permission-denied')?'Your account could not open its cellar. The database rules may not be published yet.':'Could not load your cellar ('+((e&&e.code)||'error')+'). Check your connection and try again.';
+    render(false);
+  });
+}
+function startLocal(){
+  var saved=null;
+  try{saved=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+  S.wines=Array.isArray(saved)?saved:seeds();
+  try{S.pass=localStorage.getItem('bottle-notes-pass')||'';}catch(e){}
+  S.cloud='off';render(false);
+}
+function startCloud(cfg){
+  var B='https://www.gstatic.com/firebasejs/10.14.1/';
+  var sdk=window.__sdk?Promise.resolve([window.__sdk.app,window.__sdk.auth,window.__sdk.fs]):Promise.all([import(B+'firebase-app.js'),import(B+'firebase-auth.js'),import(B+'firebase-firestore.js')]);
+  return sdk.then(function(m){
+    var a=m[0].initializeApp(cfg);
+    C.m={app:m[0],auth:m[1],fs:m[2]};
+    C.auth=m[1].getAuth(a);C.db=m[2].getFirestore(a);
+    m[1].onAuthStateChanged(C.auth,onUser);
+  });
+}
+app.addEventListener('submit',function(e){
+  if(e.target&&e.target.hasAttribute&&e.target.hasAttribute('data-auth')){e.preventDefault();submitAuth();}
+});
+
 /* ---- Start ---- */
-var saved=null;
-try{saved=JSON.parse(localStorage.getItem(KEY));}catch(e){}
-S.wines=Array.isArray(saved)?saved:seeds();
-try{S.pass=localStorage.getItem('bottle-notes-pass')||'';}catch(e){}
 S.nt=blankTasting();
 render(false);
+fetch('/api/config',{cache:'no-store'})
+  .then(function(r){return r.ok?r.json():null;})
+  .catch(function(){return null;})
+  .then(function(cfg){
+    if(!cfg||!cfg.apiKey||!cfg.projectId){startLocal();return;}
+    return startCloud(cfg).catch(function(){S.cloud='error';S.a.err='Could not load the sign-in service. Check your connection and try again.';render(false);});
+  });
 })();
 </script>
 </body>
