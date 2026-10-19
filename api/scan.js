@@ -4,7 +4,9 @@
 //
 // Vercel project settings, Environment Variables:
 //   ANTHROPIC_API_KEY  (required)  your Anthropic API key
-//   SCAN_PASSCODE      (recommended) any phrase you choose; the app sends it so strangers cannot use your key
+//   SCAN_PASSCODE      (used only while accounts are off) any phrase you choose
+//   FIREBASE_API_KEY   (turns accounts on) Firebase web API key; scans then need a signed-in, approved user
+//   ALLOWED_EMAILS     comma-separated emails allowed to scan, or * for any signed-in user
 //   ANTHROPIC_MODEL    (optional)  defaults to claude-sonnet-5-5
 
 const crypto = require('crypto');
@@ -82,6 +84,26 @@ function tidy(input) {
   return wine;
 }
 
+// Checks a Firebase sign-in token by asking Google's own lookup endpoint. No extra packages needed.
+async function verifyUser(header, apiKey) {
+  const m = /^Bearer\s+(\S+)$/.exec(String(header || ''));
+  if (!m) return null;
+  try {
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(apiKey), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: m[1] })
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const u = j && j.users && j.users[0];
+    if (!u || u.disabled) return null;
+    return { uid: u.localId, email: String(u.email || '').toLowerCase(), verified: !!u.emailVerified };
+  } catch (e) {
+    return null;
+  }
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -89,8 +111,21 @@ module.exports = async (req, res) => {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return res.status(503).json({ error: 'not_configured' });
 
-  const pass = process.env.SCAN_PASSCODE;
-  if (pass && !same(req.headers['x-passcode'], pass)) return res.status(401).json({ error: 'passcode' });
+  const fbKey = process.env.FIREBASE_API_KEY;
+  if (fbKey) {
+    // Accounts are on: the caller must be signed in, and approved by email.
+    const user = await verifyUser(req.headers.authorization, fbKey);
+    if (!user) return res.status(401).json({ error: 'signin' });
+    const allow = String(process.env.ALLOWED_EMAILS || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+    const everyone = allow.includes('*');
+    if (!everyone) {
+      if (!allow.includes(user.email)) return res.status(403).json({ error: 'not_allowed' });
+      if (!user.verified) return res.status(403).json({ error: 'unverified' });
+    }
+  } else {
+    const pass = process.env.SCAN_PASSCODE;
+    if (pass && !same(req.headers['x-passcode'], pass)) return res.status(401).json({ error: 'passcode' });
+  }
 
   const images = req.body && req.body.images;
   if (!Array.isArray(images) || images.length < 1 || images.length > MAX_IMAGES) {
