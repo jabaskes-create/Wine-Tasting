@@ -127,6 +127,7 @@ textarea.csv{font:12px/1.4 var(--font-mono);min-height:120px}
 .tag-researched{color:var(--warn);background:var(--warn-soft)}
 .tag-edited,.tag-manual{color:var(--info);background:var(--info-soft)}
 .tag-none{color:var(--muted);border:1px dashed var(--line)}
+.tag-unsure{color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn)}
 
 .photos{list-style:none;padding:0;display:flex;gap:10px;flex-wrap:wrap}
 .photos li{position:relative;width:96px;height:128px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
@@ -207,7 +208,7 @@ var app=document.getElementById('app');
 var TYPES=['red','white','rosé','sparkling','orange','dessert'];
 var TYPE_LABEL={red:'Red',white:'White','rosé':'Rosé',sparkling:'Sparkling',orange:'Orange',dessert:'Dessert'};
 var TYPE_CLS={red:'red',white:'white','rosé':'rose',sparkling:'sparkling',orange:'orange',dessert:'dessert'};
-var TAG_TXT={label:'On label',researched:'Researched',edited:'Edited',manual:'Added by you',none:'Not on label'};
+var TAG_TXT={unsure:'Check this',label:'On label',researched:'Researched',edited:'Edited',manual:'Added by you',none:'Not on label'};
 
 var FIELDS=[
   {k:'name',l:'Wine name',w:'full',ph:'e.g. Chianti Classico Riserva'},
@@ -467,7 +468,7 @@ function reviewView(){
   return '<div class="wrap">'+
     '<button class="back" data-act="'+(edit?'cancel-edit':'go-list')+'">← '+(edit?'Back to wine':'Cancel')+'</button>'+
     '<h1 class="h2">'+(edit?'Edit wine':'Review the label')+'</h1>'+
-    (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
+    (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
     '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
     '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Looks up likely grapes, producer background, drink window and price range. Each result is tagged Researched.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
@@ -557,6 +558,11 @@ function sampleDraft(){
   return d;
 }
 function finishScan(d){S.draft=d;S.scanning=false;S.dup=null;nav('review');}
+function buildExamples(){
+  return S.wines.filter(function(w){return w.fixed&&w.scanned&&w.photos&&w.photos[0]&&String(w.photos[0]).indexOf('data:image/jpeg')===0;})
+    .sort(function(a,b){return (b.added||0)-(a.added||0);}).slice(0,3)
+    .map(function(w){return {image:w.photos[0],wine:pick(w,FIELD_KEYS)};});
+}
 function startScan(){
   if(S.scanning)return;
   S.scanning=true;var tok=++S.tok;
@@ -570,7 +576,8 @@ function startScan(){
   var timer=setTimeout(function(){ctl.abort();},60000);
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
-  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs}),signal:ctl.signal});})
+  var examples=buildExamples();
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
       clearTimeout(timer);
@@ -578,8 +585,11 @@ function startScan(){
       if(x.status===200&&x.j&&x.j.wine){
         var d=pick(x.j.wine,FIELD_KEYS),src={};
         FIELD_KEYS.forEach(function(k){src[k]=d[k]?'label':'none';});
+        var orig=pick(x.j.wine,FIELD_KEYS),unsureN=0;
         if(TYPES.indexOf(d.type)===-1){d.type='red';src.type='none';}
-        d.photos=S.photos.slice();d.src=src;d.notes='';d.research=null;d.sampleKey='';d.t=blankTasting();d.live=true;
+        orig.type=d.type;
+        (Array.isArray(x.j.unsure)?x.j.unsure:[]).forEach(function(k){if(FIELD_KEYS.indexOf(k)!==-1&&d[k]&&src[k]==='label'){src[k]='unsure';unsureN++;}});
+        d.photos=S.photos.slice();d.src=src;d.notes='';d.research=null;d.sampleKey='';d.t=blankTasting();d.live=true;d.orig=orig;d.used=examples.length;d.unsureN=unsureN;
         finishScan(d);
       }else if(x.status===503||x.status===404){
         toast('Label reading is not switched on yet. Showing a sample bottle.');
@@ -607,6 +617,8 @@ function saveNew(force){
   var w=pick(d,FIELD_KEYS);
   FIELD_KEYS.forEach(function(k){w[k]=(w[k]||'').trim();});
   w.id=uid();w.src=d.src;w.photos=d.photos||[];w.notes=d.notes.trim();w.sampleKey=d.sampleKey;w.research=d.research;w.added=Date.now();
+  FIELD_KEYS.forEach(function(k){if(w.src[k]==='unsure')w.src[k]='label';});
+  if(d.orig){w.scanned=d.orig;w.fixed=FIELD_KEYS.some(function(k){return (d.orig[k]||'')!==(w[k]||'');});}
   w.tastings=hasTasting(d.t)?[tastingFrom(d.t)]:[];
   if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();
   S.wines.unshift(w);persist();
@@ -675,6 +687,8 @@ var ACT={
     if(!d.name.trim()){toast('Add a wine name first.');return;}
     FIELD_KEYS.forEach(function(k){w[k]=(d[k]||'').trim();});
     w.src=d.src;w.notes=d.notes.trim();w.research=d.research;
+    FIELD_KEYS.forEach(function(k){if(w.src[k]==='unsure')w.src[k]='label';});
+    if(w.scanned)w.fixed=FIELD_KEYS.some(function(k){return (w.scanned[k]||'')!==(w[k]||'');});
     persist();S.draft=null;toast('Changes saved.');nav('detail');
   },
   'toggle-add':function(){S.addOpen=!S.addOpen;S.confirm='';render(true);},
