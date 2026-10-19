@@ -385,13 +385,16 @@ function datalists(){
 
 function researchHtml(r){
   if(!r)return '';
+  var rows=[['Producer',r.producer],['Style',r.style],['Drink window',r.drink],['Typical price',r.price]].filter(function(x){return x[1];}).map(function(x){
+    return '<div class="frow"><dt>'+x[0]+'</dt><dd><span class="v">'+esc(x[1])+'</span></dd></div>';
+  }).join('');
+  var srcs=Array.isArray(r.sources)&&r.sources.length?r.sources:null;
+  var foot=srcs?'<p class="src">Sources: '+srcs.map(function(x){
+    var u=/^https?:\/\//i.test(x.url||'')?x.url:'';
+    return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title||u)+'</a>':esc(x.title||'');
+  }).join(' · ')+'</p>':'<p class="src">Sample text for the demo. The live version lists the web pages it used for each line.</p>';
   return '<div class="rhead"><span class="h3">What the lookup found</span><span class="tag tag-researched">Researched</span></div>'+
-    '<dl class="facts">'+
-    '<div class="frow"><dt>Producer</dt><dd><span class="v">'+esc(r.producer)+'</span></dd></div>'+
-    '<div class="frow"><dt>Style</dt><dd><span class="v">'+esc(r.style)+'</span></dd></div>'+
-    '<div class="frow"><dt>Drink window</dt><dd><span class="v">'+esc(r.drink)+'</span></dd></div>'+
-    '<div class="frow"><dt>Typical price</dt><dd><span class="v">'+esc(r.price)+'</span></dd></div>'+
-    '</dl><p class="src">Sample text for the demo. The live version lists the web pages it used for each line.</p>';
+    (rows?'<dl class="facts">'+rows+'</dl>':'<p class="muted">Nothing more than the grapes and region was found.</p>')+foot;
 }
 
 /* list */
@@ -471,7 +474,7 @@ function reviewView(){
     (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
     '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
-    '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Looks up likely grapes, producer background, drink window and price range. Each result is tagged Researched.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
+    '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price range. It only fills empty fields, and each result is tagged Researched with its sources.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
     '<section class="card"><div class="field"><label class="flabel" for="f-notes">Notes about this wine</label><textarea id="f-notes" rows="3" data-bind="d.notes" placeholder="Anything not tied to one tasting: where you bought it, when to open it">'+esc(d.notes)+'</textarea></div></section>'+
     (edit?'':'<section class="card"><div><h2 class="h3">Your tasting</h2><p class="muted">Optional. You can add tastings later from the wine page.</p></div>'+tastingForm('t',d.t)+'</section>')+
     '<div class="actions"><button class="btn btn-primary wide" data-act="'+(edit?'save-edit':'save-new')+'">'+(edit?'Save changes':'Save to cellar')+'</button></div>'+
@@ -501,7 +504,7 @@ function detailView(){
     '<h1 class="dname">'+esc(w.name)+'</h1><p class="dsub">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</p>'+
     (avg?'<p class="davg">'+starsShow(Math.round(avg))+'<span>'+avg.toFixed(1)+' average from '+rated+(rated===1?' rating':' ratings')+'</span></p>':'')+'</div></header>'+
     '<section class="card"><h2 class="h3">Details</h2><dl class="facts">'+rows+'</dl></section>'+
-    (w.research?'<section class="card">'+researchHtml(w.research)+'</section>':'')+
+    (w.research?'<section class="card">'+researchHtml(w.research)+'</section>':'<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price. Only empty fields get filled.</p></div><button class="btn" data-act="lookup-saved"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up more')+'</button></div></section>')+
     (w.notes?'<section class="card"><h2 class="h3">Notes</h2><p style="overflow-wrap:anywhere">'+esc(w.notes)+'</p></section>':'')+
     '<section class="card"><div class="shead"><h2 class="h3">Tastings ('+n+')</h2><button class="btn" data-act="toggle-add">'+(S.addOpen?'Close':'Add a tasting')+'</button></div>'+addForm+
     (n?'<ul class="tastings">'+tl+'</ul>':(S.addOpen?'':'<p class="muted">No tastings yet. Add where you tried it and what you thought.</p>'))+'</section>'+
@@ -609,6 +612,49 @@ function startScan(){
     });
 }
 
+/* ---- Web lookup ---- */
+function liveLookup(w,stillHere,after){
+  var ctl=new AbortController();
+  var timer=setTimeout(function(){ctl.abort();},90000);
+  var headers={'Content-Type':'application/json'};
+  if(S.pass)headers['x-passcode']=S.pass;
+  var body=JSON.stringify({wine:pick(w,FIELD_KEYS)});
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/lookup',{method:'POST',headers:headers,body:body,signal:ctl.signal});})
+    .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
+    .then(function(x){
+      clearTimeout(timer);
+      S.looking=false;
+      if(!stillHere())return;
+      if(x.status===200&&x.j&&x.j.research){
+        var r=x.j.research;
+        if(!w.src)w.src={};
+        var filled=0;
+        ['grapes','region'].forEach(function(k){
+          if(r[k]&&!(w[k]||'').trim()){w[k]=r[k];w.src[k]='researched';filled++;}
+        });
+        w.research={producer:r.producer||'',style:r.style||'',drink:r.drink||'',price:r.price||'',sources:Array.isArray(r.sources)?r.sources.slice(0,4):[]};
+        if(after)after();
+        toast(filled?'Lookup done. Filled '+filled+(filled===1?' empty field.':' empty fields.'):'Lookup done.');
+      }else if(x.status===422){
+        toast('The lookup found nothing reliable for this wine.',7000);
+      }else if(x.status===503||x.status===404){
+        toast('Web lookup is not switched on yet.');
+      }else if(x.status===401){
+        toast(S.user?'Your sign-in expired. Reload the page and sign in again.':'Passcode needed or wrong. Set it under Tools on the Cellar page.');
+      }else if(x.status===403){
+        toast('This account is not approved to use lookups yet.',7000);
+      }else{
+        toast('Lookup failed (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+').',12000);
+      }
+      render(true);
+    })
+    .catch(function(err){
+      clearTimeout(timer);
+      S.looking=false;
+      if(stillHere()){toast('Could not reach the lookup service ('+((err&&err.name)||'error')+'). Try again.',9000);render(true);}
+    });
+}
+
 /* ---- Saving ---- */
 function saveNew(force){
   var d=S.draft;
@@ -656,15 +702,25 @@ var ACT={
     var d=S.draft;
     if(!d||S.looking||d.research)return;
     S.looking=true;render(true);
-    setTimeout(function(){
-      S.looking=false;
-      if(S.draft!==d||S.view!=='review')return;
-      var r=RESEARCH[d.sampleKey];
-      if(!r){toast(d.live?'Web lookup is the next step and is not switched on yet.':'The demo can only look up its sample bottles.');render(true);return;}
-      if(!(d.grapes||'').trim()){d.grapes=r.grapes;d.src.grapes='researched';}
-      d.research={producer:r.producer,style:r.style,drink:r.drink,price:r.price};
-      render(true);
-    },1100);
+    if(d.sampleKey){
+      setTimeout(function(){
+        S.looking=false;
+        if(S.draft!==d||S.view!=='review')return;
+        var r=RESEARCH[d.sampleKey];
+        if(!r){toast('The demo can only look up its sample bottles.');render(true);return;}
+        if(!(d.grapes||'').trim()){d.grapes=r.grapes;d.src.grapes='researched';}
+        d.research={producer:r.producer,style:r.style,drink:r.drink,price:r.price};
+        render(true);
+      },1100);
+      return;
+    }
+    liveLookup(d,function(){return S.draft===d&&S.view==='review';});
+  },
+  'lookup-saved':function(){
+    var w=getSel();
+    if(!w||S.looking||w.research)return;
+    S.looking=true;render(true);
+    liveLookup(w,function(){return S.view==='detail'&&getSel()===w;},function(){persist();});
   },
   'save-new':function(){saveNew(false);},
   'dup-new':function(){saveNew(true);},
