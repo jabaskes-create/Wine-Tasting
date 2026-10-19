@@ -787,6 +787,21 @@ function idToken(){
   if(!C.on||!u)return Promise.resolve('');
   return u.getIdToken().catch(function(){return '';});
 }
+function notifyJoin(u){
+  /* New accounts tell the owner once. The server decides whether to email; this just avoids repeat calls. */
+  try{
+    var flag='bottle-notes-joined-'+u.uid;
+    if(localStorage.getItem(flag))return;
+    var made=Date.parse(u.metadata&&u.metadata.creationTime);
+    if(!made||Date.now()-made>15*60*1000){localStorage.setItem(flag,'1');return;}
+    idToken().then(function(t){
+      if(!t)return;
+      return fetch('/api/joined',{method:'POST',headers:{'Authorization':'Bearer '+t}}).then(function(r){
+        if(r.ok||r.status===503)try{localStorage.setItem(flag,'1');}catch(e){}
+      });
+    }).catch(function(){});
+  }catch(e){}
+}
 function importDone(){try{localStorage.setItem(IMPORT_FLAG,'1');}catch(e){}}
 function importCard(){
   var n=S.importLocal?S.importLocal.length:0;
@@ -897,6 +912,7 @@ function onUser(u){
     S.importLocal=(left&&!S.wines.length)?left:null;
     if(left&&S.wines.length)importDone();
     S.cloud='ready';S.view='list';render(false);window.scrollTo(0,0);
+    notifyJoin(u);
   }).catch(function(e){
     C.on=false;S.cloud='error';
     S.a.err=(e&&e.code==='permission-denied')?'Your account could not open its cellar. The database rules may not be published yet.':'Could not load your cellar ('+((e&&e.code)||'error')+'). Check your connection and try again.';
