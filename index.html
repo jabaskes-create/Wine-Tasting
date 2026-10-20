@@ -117,7 +117,15 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .ex{font:500 10px var(--font-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border:1px solid var(--line);padding:1px 5px;border-radius:4px}
 .empty{border:1px dashed var(--line);border-radius:10px;padding:28px 16px;text-align:center;color:var(--muted)}
 .etitle{font:500 20px var(--font-display);color:var(--ink);margin-bottom:4px}
-.tools{margin-top:12px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:16px}
+.hbtns{display:flex;gap:8px;align-items:center}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;padding:0}
+.iconbtn:hover{border-color:var(--accent)}
+.tlist{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.tbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;font-family:var(--font-body);min-height:44px}
+.tbtn:hover{border-color:var(--accent)}
+.tbtn:disabled{opacity:.6;cursor:default}
+.ttitle{font-weight:600;font-size:15px}
+.tsub{font-size:13px;color:var(--muted)}
 textarea.csv{font:12px/1.4 var(--font-mono);min-height:120px}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
@@ -479,22 +487,44 @@ function resultsHtml(){
   var line=(S.q.trim()||S.type!=='all')?'<p class="count-line">Showing '+ws.length+' of '+S.wines.length+'</p>':'';
   return line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
+var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
+function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
+function toolsView(){
+  var hasEx=S.wines.some(function(w){return w.example;});
+  var missing=missingCountries().length;
+  var impCount=S.wines.filter(function(w){return w.imported;}).length;
+  var passField=S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<div class="field"><label class="flabel" for="passcode">Scan passcode (only if you set one in Vercel)</label><input id="passcode" type="password" data-bind="p.v" value="'+esc(S.pass)+'" autocomplete="off" placeholder="Leave empty if none"></div>';
+  var csvPanel=S.csv?'<div class="field"><label class="flabel" for="csvbox">Copy this text and paste it into a spreadsheet. Your browser blocked the copy button.</label><textarea id="csvbox" class="csv" readonly>'+esc(S.csv)+'</textarea></div>':'';
+  return '<div class="wrap">'+
+    '<button class="back" data-act="go-list">← Cellar</button>'+
+    '<h1 class="h2">Tools</h1>'+
+    '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
+      toolBtn('imp-open','Import spreadsheet','Bring in a CSV list or rows copied from a spreadsheet')+
+      toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
+      toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
+      (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
+      (missing?toolBtn('fill-countries',S.filling?'Filling in…':'Fill in missing countries ('+missing+')','Adds a country from the region where it is clear',S.filling?' disabled':''):'')+
+    '</div>'+csvPanel+'</section>'+
+    '<section class="card"><h2 class="h3">Account</h2>'+
+      (S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<p class="muted">Wines are saved in this browser only. Accounts are not switched on for this site.</p>')+
+      (S.user?'':passField)+
+      '<div class="trow">'+
+        ((hasEx&&!S.user)?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
+        (S.user?'<button class="btn btn-ghost" data-act="sign-out">Sign out</button>':'<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button>')+
+      '</div></section>'+
+  '</div>';
+}
 function listView(){
   var total=S.wines.length,tastings=S.wines.reduce(function(n,w){return n+w.tastings.length;},0);
   var present=TYPES.filter(function(t){return S.wines.some(function(w){return w.type===t;});});
   if(S.type!=='all'&&present.indexOf(S.type)===-1)S.type='all';
   var hasEx=S.wines.some(function(w){return w.example;});
-  var passField=S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<div class="field"><label class="flabel" for="passcode">Scan passcode (only if you set one in Vercel)</label><input id="passcode" type="password" data-bind="p.v" value="'+esc(S.pass)+'" autocomplete="off" placeholder="Leave empty if none"></div>';
-  var csvPanel=S.csv?'<div class="field"><label class="flabel" for="csvbox">Copy this text and paste it into a spreadsheet. Your browser blocked the copy button.</label><textarea id="csvbox" class="csv" readonly>'+esc(S.csv)+'</textarea></div>':'';
   return '<div class="wrap">'+
-    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><button class="btn btn-primary" data-act="go-scan">Scan a label</button></header>'+
+    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan a label</button></div></header>'+
     (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
-    '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="imp-open">Import spreadsheet</button>'+(missingCountries().length?'<button class="btn btn-ghost" data-act="fill-countries"'+(S.filling?' disabled':'')+'>'+(S.filling?'Filling in…':'Fill in missing countries ('+missingCountries().length+')')+'</button>':'')+'<button class="btn btn-ghost" data-act="download">Download spreadsheet</button><button class="btn btn-ghost" data-act="csv">Copy for spreadsheet</button>'+
-    ((hasEx&&!S.user)?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
-    (S.user?'<button class="btn btn-ghost" data-act="sign-out">Sign out</button>':'<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button>')+'</div>'+passField+csvPanel+'</section>'+
   '</div>';
 }
 
@@ -572,6 +602,7 @@ function render(keep){
   else if(S.view==='review'&&S.draft)html=reviewView();
   else if(S.view==='detail')html=detailView();
   else if(S.view==='import')html=importView();
+  else if(S.view==='tools')html=toolsView();
   else{S.view='list';html=listView();}
   app.innerHTML=html+datalists();
   if(keep)window.scrollTo(0,y);
@@ -1136,8 +1167,18 @@ var ACT={
       })
       .catch(function(){finish(0);});
   },
-  'imp-open':function(){S.imp=null;nav('import');},
-  'imp-cancel':function(){S.imp=null;nav('list');},
+  'go-tools':function(){nav('tools');},
+  'del-imported':function(){
+    var n=S.wines.filter(function(w){return w.imported;}).length;
+    if(!n)return;
+    if(S.confirm!=='imp'){S.confirm='imp';render(true);return;}
+    S.wines=S.wines.filter(function(w){return !w.imported;});
+    S.confirm='';persist();
+    toast('Deleted '+n+(n===1?' imported wine.':' imported wines.'),6000);
+    render(true);
+  },
+  'imp-open':function(){S.imp=null;S.impFrom=S.view;nav('import');},
+  'imp-cancel':function(){S.imp=null;nav(S.impFrom==='tools'?'tools':'list');},
   'imp-parse':function(){var el=document.getElementById('impText');impLoad(el?el.value:'');},
   'imp-header':function(){
     var im=S.imp;if(!im)return;
@@ -1208,7 +1249,7 @@ var ACT={
     S.wines=seeds();S.q='';S.type='all';S.csv='';S.confirm='';persist();toast('Demo reset.');render(true);
   }
 };
-var KEEP_CONFIRM=['del-wine','del-tasting','reset'];
+var KEEP_CONFIRM=['del-wine','del-tasting','reset','del-imported'];
 
 app.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');
