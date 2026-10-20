@@ -182,6 +182,17 @@ textarea.csv{font:12px/1.4 var(--font-mono);min-height:120px}
 .stars-ro{color:var(--accent);letter-spacing:1px;font-size:14px;white-space:nowrap}
 .stars-ro .off{color:var(--line)}
 
+.lb{position:fixed;inset:0;z-index:20;background:#0a0608;display:flex;flex-direction:column;color:#fff}
+.lbbar{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+.lbbar .btn{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff;min-height:40px;padding:8px 14px}
+.lbbody{flex:1;overflow:auto;display:flex;touch-action:pan-x pan-y pinch-zoom}
+.lbimg{margin:auto;max-width:100%;max-height:100%;object-fit:contain;cursor:zoom-in}
+.lbimg.z{max-width:none;max-height:none;width:260%;cursor:zoom-out}
+.lbnav{display:flex;justify-content:center;gap:10px;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.lbnav .btn{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.25);color:#fff;min-width:96px}
+#toast{z-index:60}
+.addph{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;width:96px;height:128px;border-radius:8px;border:1.5px dashed var(--accent);color:var(--accent);cursor:pointer;font-size:13px;text-align:center}
+.photos button.thumbbtn{all:unset;display:block;width:100%;height:100%;cursor:zoom-in}
 .dhead{display:flex;gap:16px;align-items:flex-start}
 .dhead>div{min-width:0}
 .dphoto{width:96px;height:128px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none}
@@ -563,6 +574,33 @@ function reviewView(){
 }
 
 /* detail */
+function photosCard(w){
+  var ps=w.photos||[],n=ps.length;
+  var items=ps.map(function(p,i){return '<li><button class="thumbbtn" data-act="lb-open" data-i="'+i+'" aria-label="Open photo '+(i+1)+'"><img src="'+p+'" alt="Label photo '+(i+1)+'"></button></li>';}).join('');
+  var add=n<3?'<li style="border:0;overflow:visible"><input id="wphoto" class="vh wphoto-in" type="file" accept="image/*"><label class="addph" for="wphoto"><span>+ Add photo</span><span class="tsub">'+(n?'Back label?':'Front label')+'</span></label></li>':'';
+  if(!n&&!add)return '';
+  return '<section class="card"><h2 class="h3">Photos</h2><ul class="photos" style="margin-top:8px">'+items+add+'</ul>'+(n?'<p class="muted" style="margin-top:8px">Tap a photo to enlarge it. Tap again, or pinch, to zoom.</p>':'')+'</section>';
+}
+function lightbox(w){
+  var lb=S.lb;
+  if(!lb||!w||!w.photos||!w.photos[lb.i])return '';
+  var n=w.photos.length;
+  return '<div class="lb" data-act="lb-close" role="dialog" aria-label="Photo"><div class="lbbar"><span>'+(lb.i+1)+' of '+n+'</span>'+
+    '<span style="display:flex;gap:8px"><button class="btn" data-act="lb-del">'+(S.confirm==='lbdel'?'Tap again to remove':'Remove')+'</button><button class="btn" data-act="lb-close">Close</button></span></div>'+
+    '<div class="lbbody"><img class="lbimg'+(lb.zoom?' z':'')+'" src="'+w.photos[lb.i]+'" alt="Label photo '+(lb.i+1)+'" data-act="lb-zoom"></div>'+
+    (n>1?'<div class="lbnav"><button class="btn" data-act="lb-prev">← Previous</button><button class="btn" data-act="lb-next">Next →</button></div>':'')+'</div>';
+}
+function onWinePhoto(input){
+  var w=getSel(),f=input.files&&input.files[0];
+  if(!w||!f)return;
+  w.photos=w.photos||[];
+  if(w.photos.length>=3){toast('A wine can hold up to 3 photos.');return;}
+  shrink(f,520,0.72).then(function(p){
+    input.value='';
+    if(JSON.stringify(w).length+p.length>900000){toast('This wine is too big to hold another photo. Remove one first.',6000);return;}
+    w.photos.push(p);persist();render(true);toast('Photo added.');
+  }).catch(function(){input.value='';toast('Could not read that photo. Try another.',5000);});
+}
 function detailView(){
   var w=getSel();
   if(!w){S.view='list';return listView();}
@@ -580,17 +618,18 @@ function detailView(){
   }).join('');
   var addForm=S.addOpen?tastingForm('nt',S.nt)+'<div class="actions"><button class="btn btn-primary wide" data-act="save-tasting">Save tasting</button></div>':'';
   return '<div class="wrap"><button class="back" data-act="go-list">← Cellar</button>'+
-    '<header class="dhead">'+(w.photos&&w.photos[0]?'<img class="dphoto" src="'+w.photos[0]+'" alt="Label photo">':'')+
+    '<header class="dhead">'+(w.photos&&w.photos[0]?'<button class="thumbbtn" data-act="lb-open" data-i="0" aria-label="Open photo" style="all:unset;cursor:zoom-in"><img class="dphoto" src="'+w.photos[0]+'" alt="Label photo"></button>':'')+
     '<div><p class="eyebrow">'+dot(w.type)+'<span>'+TYPE_LABEL[w.type]+(w.example?' · Example':'')+'</span></p>'+
     '<h1 class="dname">'+esc(w.name)+'</h1><p class="dsub">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</p>'+
     (avg?'<p class="davg">'+starsShow(Math.round(avg))+'<span>'+avg.toFixed(1)+' average from '+rated+(rated===1?' rating':' ratings')+'</span></p>':'')+'</div></header>'+
     '<section class="card"><h2 class="h3">Details</h2><dl class="facts">'+rows+'</dl></section>'+
+    photosCard(w)+
     (w.research?'<section class="card">'+researchHtml(w.research)+'</section>':'<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price. Only empty fields get filled.</p></div><button class="btn" data-act="lookup-saved"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up more')+'</button></div></section>')+
     (w.notes?'<section class="card"><h2 class="h3">Notes</h2><p style="overflow-wrap:anywhere">'+esc(w.notes)+'</p></section>':'')+
     '<section class="card"><div class="shead"><h2 class="h3">Tastings ('+n+')</h2><button class="btn" data-act="toggle-add">'+(S.addOpen?'Close':'Add a tasting')+'</button></div>'+addForm+
     (n?'<ul class="tastings">'+tl+'</ul>':(S.addOpen?'':'<p class="muted">No tastings yet. Add where you tried it and what you thought.</p>'))+'</section>'+
     '<div class="trow"><button class="btn" data-act="edit">Edit details</button><button class="btn btn-ghost" data-act="del-wine">'+(S.confirm==='w'?'Tap again to delete wine':'Delete wine')+'</button></div>'+
-  '</div>';
+  '</div>'+lightbox(w);
 }
 
 function render(keep){
@@ -607,7 +646,7 @@ function render(keep){
   app.innerHTML=html+datalists();
   if(keep)window.scrollTo(0,y);
 }
-function nav(v){S.view=v;S.confirm='';render(false);window.scrollTo(0,0);}
+function nav(v){S.view=v;S.confirm='';S.lb=null;render(false);window.scrollTo(0,0);}
 
 /* ---- Photos and the stubbed scan ---- */
 function shrink(file,max,q){
@@ -1168,6 +1207,22 @@ var ACT={
       .catch(function(){finish(0);});
   },
   'go-tools':function(){nav('tools');},
+  'lb-open':function(el){S.lb={i:+el.dataset.i||0,zoom:false};render(true);},
+  'lb-close':function(el,e){
+    /* the dark backdrop closes it; taps on the bar or arrows should not */
+    if(el.classList.contains('lb')&&e&&e.target!==el&&!e.target.classList.contains('lbbody'))return;
+    S.lb=null;S.confirm='';render(true);
+  },
+  'lb-zoom':function(){if(S.lb){S.lb.zoom=!S.lb.zoom;render(true);}},
+  'lb-prev':function(){var w=getSel();if(!S.lb||!w)return;S.lb.i=(S.lb.i+w.photos.length-1)%w.photos.length;S.lb.zoom=false;render(true);},
+  'lb-next':function(){var w=getSel();if(!S.lb||!w)return;S.lb.i=(S.lb.i+1)%w.photos.length;S.lb.zoom=false;render(true);},
+  'lb-del':function(){
+    var w=getSel();if(!S.lb||!w)return;
+    if(S.confirm!=='lbdel'){S.confirm='lbdel';render(true);return;}
+    w.photos.splice(S.lb.i,1);S.confirm='';persist();
+    if(!w.photos.length)S.lb=null;else S.lb.i=Math.min(S.lb.i,w.photos.length-1);
+    toast('Photo removed.');render(true);
+  },
   'del-imported':function(){
     var n=S.wines.filter(function(w){return w.imported;}).length;
     if(!n)return;
@@ -1249,7 +1304,7 @@ var ACT={
     S.wines=seeds();S.q='';S.type='all';S.csv='';S.confirm='';persist();toast('Demo reset.');render(true);
   }
 };
-var KEEP_CONFIRM=['del-wine','del-tasting','reset','del-imported'];
+var KEEP_CONFIRM=['del-wine','del-tasting','reset','del-imported','lb-del'];
 
 app.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');
@@ -1293,6 +1348,7 @@ app.addEventListener('input',onBind);
 app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
+  else if(c&&c.contains('wphoto-in'))onWinePhoto(e.target);
   else if(c&&c.contains('imp-file')){
     var f=e.target.files&&e.target.files[0];if(!f)return;
     var fr=new FileReader();fr.onload=function(){impLoad(String(fr.result||''));};fr.onerror=function(){toast('Could not read that file.');};fr.readAsText(f);
