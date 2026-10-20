@@ -567,15 +567,17 @@ function rowHtml(w){
     '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
     '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>')+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
 }
+function addLabel(){var q=S.q.trim();return q?'+ Add “'+esc(q.slice(0,40))+'” to Want to try':'+ Add a wine by name';}
 function resultsHtml(){
   var ws=filtered();
   if(!ws.length){
+    if(shelfWines().length&&S.shelf==='want'&&S.q.trim()&&!filterCount())return '<div class="empty"><p class="etitle">Not on your list</p><p>This searches only wines already on your list. To add one, type it in.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div></div>';
     if(shelfWines().length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.'+(filterCount()?' Your filters may be hiding wines.':'')+'</p>'+(filterCount()?'<div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
     if(S.shelf==='want')return '<div class="empty"><p class="etitle">Nothing on your list yet</p><p>Scan a bottle and choose Want to try, or type in a wine you have heard about.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="add-typed">+ Add a wine by name</button></div></div>';
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+shelfWines().length+'</p>':'';
-  return (S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">+ Add a wine by name</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
+  return (S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
@@ -614,7 +616,7 @@ function listView(){
     '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan a label</button></div></header>'+
     (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     '<div class="shelf" role="group" aria-label="Which list"><button class="shbtn'+(S.shelf==='cellar'?' on':'')+'" data-act="shelf" data-v="cellar" aria-pressed="'+(S.shelf==='cellar')+'">Cellar ('+total+')</button><button class="shbtn'+(S.shelf==='want'?' on':'')+'" data-act="shelf" data-v="want" aria-pressed="'+(S.shelf==='want')+'">Want to try ('+wantN+')</button></div>'+
-    '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
+    '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="'+(S.shelf==='want'?'Search your Want to try list':'Search name, grape, region, place, taster')+'" autocomplete="off" aria-label="'+(S.shelf==='want'?'Search your Want to try list':'Search your cellar')+'"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+sortFilterBar()+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
   '</div>';
@@ -1242,6 +1244,7 @@ var ACT={
   'add-typed':function(){
     var d={src:{},photos:[],notes:'',research:null,sampleKey:'',live:false,manual:true,seen:'',t:blankTasting()};
     FIELD_KEYS.forEach(function(k){d[k]='';});d.type='red';
+    if(S.shelf==='want'&&S.q.trim())d.name=S.q.trim().slice(0,120);
     S.draft=d;S.dup=null;nav('review');
   },
   'save-want':function(){saveNew(false,'want');},
