@@ -263,7 +263,10 @@ var FIELDS=[
   {k:'region',l:'Region'},
   {k:'appellation',l:'Appellation',w:'full',ph:'e.g. DOCG, AOC, DO'},
   {k:'abv',l:'Alcohol %',mode:'decimal',ph:'13.5'},
-  {k:'volume',l:'Volume (ml)',mode:'numeric',ph:'750'}
+  {k:'volume',l:'Volume (ml)',mode:'numeric',ph:'750'},
+  {k:'drinkby',l:'Drink until',ph:'e.g. 2032 or 2032-06',hint:'The year or date after which the wine is past its best.'},
+  {k:'score',l:'Your rating',ph:'e.g. 92 or 4.5',hint:'Any scale you use. Kept exactly as you type it.'},
+  {k:'paid',l:'Price paid',ph:'e.g. €25'}
 ];
 var FIELD_KEYS=FIELDS.map(function(f){return f.k;});
 
@@ -419,7 +422,7 @@ function seeds(){
 }
 
 /* ---- Views ---- */
-function tagHtml(k,d){var s=(d.src&&d.src[k])||'none';return '<span class="tag tag-'+s+'" data-tag="'+k+'">'+TAG_TXT[s]+'</span>';}
+function tagHtml(k,d){var s=(d.src&&d.src[k])||'none';if(s==='none'&&(k==='drinkby'||k==='score'||k==='paid'))return '';return '<span class="tag tag-'+s+'" data-tag="'+k+'">'+TAG_TXT[s]+'</span>';}
 function dot(type){return '<i class="dot dot-'+(TYPE_CLS[type]||'red')+'"></i>';}
 var NOPREVIEW='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 128"><rect width="96" height="128" fill="#8a7f87"/><text x="48" y="68" text-anchor="middle" font-size="13" fill="#fff" font-family="sans-serif">Photo</text></svg>');
 var BOTTLE='<svg viewBox="0 0 24 40" width="20" height="34" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 2h4v8c0 2 4 4 4 9v17a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V19c0-5 4-7 4-9V2z"/><rect x="7" y="22" width="10" height="8" rx="1"/></svg>';
@@ -482,7 +485,7 @@ function researchHtml(r){
 /* list */
 function chip(v,l){return '<button class="chip'+(S.type===v?' on':'')+'" data-act="filter" data-v="'+v+'" aria-pressed="'+(S.type===v)+'">'+l+'</button>';}
 /* ---- Sort and filter ---- */
-var SORTS=[['added','Recently added'],['tasted','Last tasted'],['rating','Highest rated'],['name','Name A to Z'],['producer','Producer A to Z'],['vintage-new','Vintage, newest first'],['vintage-old','Vintage, oldest first']];
+var SORTS=[['added','Recently added'],['tasted','Last tasted'],['rating','Highest rated'],['name','Name A to Z'],['producer','Producer A to Z'],['vintage-new','Vintage, newest first'],['drinkby','Drink soonest'],['vintage-old','Vintage, oldest first']];
 function saveView(){try{localStorage.setItem('bottle-notes-view-v1',JSON.stringify({sort:S.sort,shelf:S.shelf,f:S.f}));}catch(e){}}
 function regionKey(v){var k=norm(v).trim().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),g=ALIAS[k];return g?g[0]:k;}
 function countryOf(w){return impCountry(w.country);}
@@ -522,6 +525,7 @@ function sorter(mode){
   switch(mode){
     case 'tasted':return function(a,b){var x=lastTasting(a),y=lastTasting(b),dx=(x&&x.date)||'',dy=(y&&y.date)||'';if(!dx&&!dy)return tie(a,b);if(!dx)return 1;if(!dy)return -1;return dy.localeCompare(dx)||tie(a,b);};
     case 'rating':return function(a,b){var x=avgRating(a),y=avgRating(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y-x||tie(a,b);};
+    case 'drinkby':return function(a,b){var x=drinkEnd(a),y=drinkEnd(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return x-y||tie(a,b);};
     case 'name':return function(a,b){return cmpText(a.name,b.name)||tie(a,b);};
     case 'producer':return function(a,b){var x=a.producer||'',y=b.producer||'';if(!x&&!y)return cmpText(a.name,b.name);if(!x)return 1;if(!y)return -1;return cmpText(x,y)||cmpText(a.name,b.name);};
     case 'vintage-new':return function(a,b){var x=vintageNum(a),y=vintageNum(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y-x||tie(a,b);};
@@ -529,6 +533,14 @@ function sorter(mode){
     default:return tie;
   }
 }
+function drinkEnd(w){
+  var m=/^\s*(\d{4})(?:\s*[-\/.]\s*(\d{1,2}))?(?:\s*[-\/.]\s*(\d{1,2}))?/.exec(String(w.drinkby||''));
+  if(!m)return 0;
+  var y=+m[1],mo=m[2]?+m[2]:12,d=m[3]?+m[3]:0;
+  if(y<1900||y>2300||mo<1||mo>12)return 0;
+  return d?new Date(y,mo-1,d,23,59,59).getTime():new Date(y,mo,0,23,59,59).getTime();
+}
+function pastBest(w){var e=drinkEnd(w);return !!e&&e<Date.now();}
 function isWant(w){return w.status==='want';}
 function qtyOf(w){var n=parseInt(w.qty,10);return n>0?Math.min(n,9999):0;}
 function clampQty(v){var n=parseInt(v,10);return n>0?Math.min(n,999):1;}
@@ -589,7 +601,7 @@ function rowHtml(w){
   return '<li><button class="row" data-act="open" data-id="'+w.id+'">'+thumb(w)+
     '<span class="rbody"><span class="rname">'+esc(w.name||'Untitled wine')+'</span><span class="rmeta">'+esc(meta)+'</span><span class="rmeta">'+esc(where)+'</span>'+
     (isWant(w)&&w.seen?'<span class="rwhere">Seen: '+esc(w.seen)+'</span>':'')+(last&&last.where?'<span class="rwhere">Last: '+esc(last.where)+'</span>':'')+'</span>'+
-    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':'')+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':''):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
+    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':(pastBest(w)?'<span class="wtag">Past its best</span>':''))+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(w.score?'<span class="rcount">Rated '+esc(w.score)+'</span>':(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':'')):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
     '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>'))+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
 }
 function addLabel(){var q=S.q.trim();return q?'+ Add “'+esc(q.slice(0,40))+'” to Want to try':'+ Add a wine by name';}
@@ -718,7 +730,7 @@ function detailView(){
   var avg=avgRating(w),n=w.tastings.length,rated=w.tastings.filter(function(t){return t.rating;}).length;
   var rows=FIELDS.filter(function(f){return f.k!=='name'&&f.k!=='producer'&&f.k!=='vintage'&&f.k!=='type';}).map(function(f){
     var v=w[f.k];
-    var shown=v?(f.k==='abv'?v+'%':(f.k==='volume'?v+' ml':v)):'—';
+    var shown=v?(f.k==='abv'?v+'%':(f.k==='volume'?v+' ml':(f.k==='drinkby'&&pastBest(w)?v+' · past its best':v))):'—';
     return '<div class="frow"><dt>'+f.l+'</dt><dd><span class="v">'+esc(shown)+'</span>'+tagHtml(f.k,w)+'</dd></div>';
   }).join('');
   var tl=sortedTastings(w).map(function(t){
@@ -1074,15 +1086,15 @@ function tastingFrom(t){return {id:uid(),where:t.where.trim(),date:t.date,taster
 
 function sheetCell(v,sep){var s=String(v==null?'':v);return (s.indexOf(sep)!==-1||/["\n\r]/.test(s))?'"'+s.replace(/"/g,'""')+'"':s;}
 function sheetRows(){
-  var rows=[['wine','producer','vintage','type','grapes','country','region','appellation','abv','volume_ml','wine_notes','date','place','taster','rating','price','tasting_notes','producer_background','style','drink_window','typical_price','sources','status','where_seen','bottles']];
+  var rows=[['wine','producer','vintage','type','grapes','country','region','appellation','abv','volume_ml','wine_notes','date','place','taster','rating','price','tasting_notes','producer_background','style','drink_window','typical_price','sources','status','where_seen','bottles','drink_until','your_rating','paid']];
   S.wines.forEach(function(w){
     var r=w.research||{};
     var srcs=(r.sources||[]).map(function(x){return x.url;}).filter(Boolean).join(' ');
     var base=[w.name,w.producer,w.vintage,w.type,w.grapes,w.country,w.region,w.appellation,w.abv,w.volume,w.notes];
     var tail=[r.producer||'',r.style||'',r.drink||'',r.price||'',srcs,isWant(w)?'want to try':'cellar',w.seen||''];
-    var qcell=qtyOf(w)||'';
-    if(!w.tastings.length)rows.push(base.concat(['','','','','',''],tail,[qcell]));
-    else w.tastings.forEach(function(t,ti){rows.push(base.concat([t.date,t.where,t.taster,t.rating||'',t.price,t.notes],tail,[ti===0?qcell:'']));});
+    var qcell=qtyOf(w)||'',xtra=[w.drinkby||'',w.score||'',w.paid||''];
+    if(!w.tastings.length)rows.push(base.concat(['','','','','',''],tail,[qcell],xtra));
+    else w.tastings.forEach(function(t,ti){rows.push(base.concat([t.date,t.where,t.taster,t.rating||'',t.price,t.notes],tail,[ti===0?qcell:''],xtra));});
   });
   return rows;
 }
@@ -1132,8 +1144,9 @@ function missingCountries(){return S.wines.filter(function(w){return !(w.country
 /* ---- Spreadsheet import ---- */
 var IMP_FIELDS=[
   ['name','Wine name'],['producer','Producer'],['vintage','Vintage'],['type','Type'],['grapes','Grapes'],['country','Country'],['region','Region'],
-  ['appellation','Appellation'],['abv','Alcohol %'],['volume','Volume'],['wnotes','Notes about the wine'],
-  ['date','Date tasted'],['place','Where tasted'],['taster','Taster'],['rating','Rating'],['price','Price paid'],['tnotes','Tasting notes'],['qty','Bottles (quantity)'],['status','Status (cellar / want to try)'],['seen','Where you saw it']
+  ['appellation','Appellation'],['abv','Alcohol %'],['volume','Volume'],['wnotes','Notes'],
+  ['drinkby','Drink until'],['score','Your rating (kept as written)'],['paid','Price paid'],
+  ['qty','Bottles (quantity)'],['status','Status (collection / want to try)'],['seen','Where you saw it']
 ];
 var IMP_KEYS=IMP_FIELDS.map(function(f){return f[0];});
 var IMP_LABEL={};IMP_FIELDS.forEach(function(f){IMP_LABEL[f[0]]=f[1];});
@@ -1149,24 +1162,17 @@ var IMP_SYN={
   appellation:'appellation doc docg aoc denominazione designation denominacion classification quality',
   abv:'abv alcohol alc gradazione gradi abvpercent alcoholpercent alcoholbyvolume vol grado degre alkohol',
   volume:'volume size bottlesize ml cl formato capacity volumen contenance volumeml sizeml',
-  wnotes:'winenotes description about details winedescription',
-  date:'date tasted datetasted tastingdate drankon data fecha datum whenidrank dateadded',
-  place:'place where location restaurant venue wheretried wheretasted luogo lugar bar',
-  taster:'taster who by drankwith person with rater reviewer',
-  rating:'rating score stars rate points voto punteggio puntuacion grade',
-  price:'price cost paid pricepaid prezzo precio prix preis',
-  tnotes:'tastingnotes tasting notes note comments comment review impressions nota notas notizen commento commenti comentario comentarios commentaire commentaires bemerkungen anmerkungen appunti remarks memo thoughts',
+  wnotes:'winenotes description about details winedescription notes note tastingnotes comments comment review impressions nota notas notizen commento commenti comentario comentarios commentaire commentaires bemerkungen anmerkungen appunti remarks memo thoughts',
+  drinkby:'drinkuntil drinkby drinkbefore drinkthru drinkthrough bestbefore consumeby enddrinking maturity peakuntil',
+  score:'rating score stars rate points voto punteggio puntuacion grade pts myrating yourrating',
+  paid:'price cost paid pricepaid prezzo precio prix preis purchaseprice paidprice',
   qty:'qty quantity bottles bottle count cantidad quantita quantite stock inventory units pcs nb',
   status:'status list shelf wishlist wish state',
   seen:'whereseen wheresaw seenat whereyousawit source'
 };
 function impHasName(im){return im.map.indexOf('name')!==-1||im.map.indexOf('producer')!==-1;}
 function impQty(s){var m=String(s==null?'':s).match(/\d+/);return m?Math.min(parseInt(m[0],10),999):0;}
-function impGuessColl(im){
-  /* Imported wines are bottles you own, unless the sheet has tasting columns (then it is a tasting list). */
-  if(im.map.indexOf('qty')!==-1)return true;
-  return !['date','place','taster','rating','tnotes'].some(function(k){return im.map.indexOf(k)!==-1;});
-}
+function impGuessColl(im){return true;}
 function impKey(s){return norm(s).replace(/[^a-z0-9]/g,'');}
 function parseDelimited(text){
   text=String(text||'').replace(/^﻿/,'');
@@ -1272,42 +1278,35 @@ function impKeyOf(w){var k=function(x){return norm(x).replace(/[^a-z0-9]/g,'');}
 /* Turns the parsed rows plus the column choices into wines. Nothing is saved here. */
 function buildImport(im){
   var rows=im.rows.slice(im.header?1:0),map=im.map,groups={},order=[],noName=0,coll=!!im.coll,qi=map.indexOf('qty');
-  var dci=map.indexOf('date'),dorder=dci===-1?'':impDateOrder(rows.map(function(r){return r[dci];}));
   rows.forEach(function(r){
     var v={};IMP_KEYS.forEach(function(k){v[k]='';});
     map.forEach(function(f,ci){if(f&&!v[f])v[f]=String(r[ci]==null?'':r[ci]).replace(/\s+/g,' ').trim();});
     if(!v.name&&v.producer)v.name=v.producer;
     if(!v.name){noName++;return;}
     var w={name:v.name.slice(0,120),producer:v.producer.slice(0,120),vintage:impVintage(v.vintage),type:impType(v.type||''),grapes:v.grapes.slice(0,160),
-      country:impCountry(v.country).slice(0,60),region:v.region.slice(0,80),appellation:v.appellation.slice(0,120),abv:impAbv(v.abv),volume:impVolume(v.volume),notes:v.wnotes.slice(0,280)};
+      country:impCountry(v.country).slice(0,60),region:v.region.slice(0,80),appellation:v.appellation.slice(0,120),abv:impAbv(v.abv),volume:impVolume(v.volume),notes:v.wnotes.slice(0,280),
+      drinkby:v.drinkby.slice(0,20),score:v.score.slice(0,20),paid:v.paid.slice(0,40)};
     if(!w.country){var ic=inferCountry(w);if(ic){w.country=ic;w.countryInferred=true;}}
-    var t={date:impDate(v.date,dorder),where:v.place.slice(0,120),taster:v.taster.slice(0,60),rating:impRating(v.rating),price:v.price.slice(0,40),notes:v.tnotes.slice(0,280)};
-    var has=!!(t.date||t.where||t.taster||t.rating||t.price||t.notes);
     var rowQty=coll?(qi===-1?1:impQty(v.qty)):0;
     var wantRow=/want|wish|try|quiero|voglio|provare|probar|buy/i.test(v.status||'');
     var key=impKeyOf(w),g=groups[key];
-    if(!g){g=groups[key]={wine:w,tastings:[],want:wantRow,seen:v.seen.slice(0,120),qty:0,tk:{}};order.push(key);}
-    else if(wantRow&&!g.want&&!g.tastings.length&&!has){g.want=true;}
-    else FIELD_KEYS.concat(['notes']).forEach(function(k){if(!g.wine[k]&&w[k])g.wine[k]=w[k];});
+    if(!g){g=groups[key]={wine:w,want:wantRow,seen:v.seen.slice(0,120),qty:0};order.push(key);}
+    else{
+      if(wantRow)g.want=true;
+      FIELD_KEYS.concat(['notes']).forEach(function(k){if(!g.wine[k]&&w[k])g.wine[k]=w[k];});
+    }
     g.qty+=rowQty;
-    var tkey=[t.date,t.where,t.taster,t.rating,t.notes].join('|');
-    if(has&&!(coll&&g.tk[tkey]))g.tastings.push(t);
-    g.tk[tkey]=1;
-    if(has)g.want=false;
   });
   var existing={};S.wines.forEach(function(w){existing[impKeyOf(w)]=w;});
-  var fresh=[],dupes=0,newT=0,bottles=0;
+  var fresh=[],dupes=0,bottles=0;
   order.forEach(function(key){
-    var g=groups[key],ex=existing[key],tk=function(t){return [t.date,t.where,t.taster,t.rating,t.notes].join('|');};
+    var g=groups[key],ex=existing[key];
     if(ex){
-      dupes++;
-      var have={};ex.tastings.forEach(function(t){have[tk(t)]=1;});
-      var add=g.tastings.filter(function(t){return !have[tk(t)];});
-      newT+=add.length;bottles+=g.qty;
-      if(add.length||g.qty)fresh.push({existing:ex,tastings:add,qty:g.qty});
-    }else{newT+=g.tastings.length;var isW=g.want&&!g.tastings.length;if(!isW)bottles+=g.qty;fresh.push({wine:g.wine,tastings:g.tastings,want:isW,seen:g.seen,qty:isW?0:g.qty});}
+      dupes++;bottles+=g.qty;
+      if(g.qty)fresh.push({existing:ex,tastings:[],qty:g.qty});
+    }else{if(!g.want)bottles+=g.qty;fresh.push({wine:g.wine,tastings:[],want:g.want,seen:g.seen,qty:g.want?0:g.qty});}
   });
-  return {items:fresh,newWines:fresh.filter(function(x){return x.wine;}).length,dupes:dupes,newTastings:newT,bottles:bottles,noName:noName,rows:rows.length};
+  return {items:fresh,newWines:fresh.filter(function(x){return x.wine;}).length,dupes:dupes,newTastings:0,bottles:bottles,noName:noName,rows:rows.length};
 }
 function impSample(im,ci){
   var rows=im.rows.slice(im.header?1:0),i;
@@ -1449,7 +1448,7 @@ function importView(){
       '<p class="muted">Bring in a list you already keep. Your columns can be named and ordered any way you like, and you check the match before anything is saved.</p>'+
       '<section class="card"><div class="field"><div class="flabel">Choose a file</div><input id="impFile" class="vh imp-file" type="file" accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,text/tab-separated-values"><label class="drop" for="impFile"><span class="dtitle">Choose an Excel or CSV file</span><span class="dsub">An Excel .xlsx file works directly. From Sheets: File, Download, then Excel or CSV</span></label></div></section>'+
       '<section class="card"><div class="field"><label class="flabel" for="impText">Or paste rows copied from a spreadsheet</label><textarea id="impText" class="csv" placeholder="Select the cells in your spreadsheet, copy, and paste here. Include the header row."></textarea></div><div class="actions"><button class="btn" data-act="imp-parse">Read pasted rows</button></div></section>'+
-      '<p class="muted">Different languages are fine (vino, producteur, año…). Ratings out of 10 or 100 are converted to 5 stars. Photos cannot come from a spreadsheet.</p></div>';
+      '<p class="muted">Different languages are fine (vino, producteur, año…). Your rating is kept exactly as you write it. Tastings are never created by an import. Photos cannot come from a spreadsheet.</p></div>';
   }
   var hs=impHeaders(im),R=buildImport(im),hasName=impHasName(im);
   var opts=function(cur){return '<option value="">Ignore this column</option>'+IMP_FIELDS.map(function(f){return '<option value="'+f[0]+'"'+(cur===f[0]?' selected':'')+'>'+f[1]+'</option>';}).join('');};
@@ -1717,7 +1716,8 @@ var ACT={
         if(S.imp!==im)return;
         if(x.status===200&&x.j&&Array.isArray(x.j.mapping)){
           var used={};
-          im.map=hs.map(function(h,i){var f=x.j.mapping[i];if(IMP_KEYS.indexOf(f)!==-1&&!used[f]){used[f]=1;return f;}return '';});
+          var tr={tnotes:'wnotes',rating:'score',price:'paid'};
+          im.map=hs.map(function(h,i){var f=x.j.mapping[i];f=tr[f]||f;if(IMP_KEYS.indexOf(f)!==-1&&!used[f]){used[f]=1;return f;}return '';});
           toast('Columns matched. Check them below.');
         }else if(x.status===401||x.status===403){toast('Sign in with an approved account to use Claude for this.',7000);}
         else toast('Claude could not match the columns. Choose them yourself below.',7000);
