@@ -94,6 +94,19 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .searchbar input{padding:12px 14px}
 #results{width:100%;padding-left:0;padding-right:0;box-sizing:border-box}
 #results>*{width:100%;box-sizing:border-box}
+.stiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.card .stile{background:var(--field)}
+.sbig{font:600 28px var(--font-display);color:var(--ink);line-height:1.1}
+.slab{font-size:13px;color:var(--muted)}
+.sbars{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.srow{all:unset;display:grid;grid-template-columns:1fr auto;gap:3px 10px;width:100%;box-sizing:border-box;padding:6px 0}
+button.srow{cursor:pointer}
+.slabel{min-width:0;overflow-wrap:anywhere}
+.slabel .dot{margin-right:7px}
+.snum{font:500 14px var(--font-mono);color:var(--ink)}
+.strack{grid-column:1/-1;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.sfill{display:block;height:100%;background:var(--accent);border-radius:4px}
 .menurow{all:unset;display:block;width:100%;cursor:pointer;box-sizing:border-box}
 .shelf{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
 .shbtn{flex:1;border:0;background:transparent;color:var(--ink);padding:9px 3px;border-radius:9px;font:600 13px var(--font-body);cursor:pointer;min-height:40px}
@@ -615,7 +628,7 @@ function resultsHtml(){
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label or wine list to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+shelfWines().length+'</p>':'';
-  return (S.shelf==='coll'?'<div class="trow"><button class="btn btn-primary" data-act="go-drink">Drink a bottle</button></div>':'')+(S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
+  return (S.shelf==='coll'?'<div class="trow"><button class="btn btn-primary" data-act="go-drink">Drink a bottle</button><button class="btn" data-act="go-stats">Stats</button></div>':'')+(S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
@@ -629,6 +642,7 @@ function toolsView(){
     '<button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
+      toolBtn('go-stats','Stats','How many bottles you have, by type, country, region, grape and vintage')+
       toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
@@ -662,15 +676,15 @@ function listView(){
 function scanView(){
   var n=S.photos.length;
   var photos=n?'<ul class="photos">'+S.photos.map(function(p,i){return '<li><img src="'+p+'" alt="Label photo '+(i+1)+'"><button class="x" data-act="rm-photo" data-i="'+i+'" aria-label="Remove photo '+(i+1)+'">×</button></li>';}).join('')+'</ul>':'';
-  var menuMode=S.scanMode==='menu',drinkMode=S.scanMode==='drink',maxP=menuMode?4:(drinkMode?2:3);
+  var recMode=S.scanMode==='receipt',menuMode=S.scanMode==='menu'||recMode,drinkMode=S.scanMode==='drink',maxP=menuMode?4:(drinkMode?2:3);
   var picker=n<maxP?'<div class="picks"><div class="pick"><input id="photoCam" class="vh photo-in" type="file" accept="image/*" capture="environment"><label class="drop" for="photoCam"><span class="dtitle">Take a photo</span><span class="dsub">Opens the camera</span></label></div><div class="pick"><input id="photoLib" class="vh photo-in" type="file" accept="image/*"><label class="drop" for="photoLib"><span class="dtitle">Choose a photo</span><span class="dsub">From your library or files</span></label></div></div>'+(n?'':'<p class="muted">If the camera does not open here, take the picture with your camera app first, then choose it.</p>'):'';
   var actions=S.scanning?
-    '<div class="reading" role="status"><span class="bar"></span>'+(menuMode?'Reading wine list…':'Reading label…')+'</div>':
-    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">Read wine list</button>':'<p class="muted">Add a photo of the wine list first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
-  var modes='<div class="shelf" role="group" aria-label="What are you scanning"><button class="shbtn'+(menuMode?'':' on')+'" data-act="scan-mode" data-v="label" aria-pressed="'+!menuMode+'">A bottle label</button><button class="shbtn'+(menuMode?' on':'')+'" data-act="scan-mode" data-v="menu" aria-pressed="'+menuMode+'">A wine list</button></div>';
+    '<div class="reading" role="status"><span class="bar"></span>'+(recMode?'Reading receipt…':(menuMode?'Reading wine list…':'Reading label…'))+'</div>':
+    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
+  var modes='<div class="shelf" role="group" aria-label="What are you scanning">'+[['label','Bottle label'],['menu','Wine list'],['receipt','Receipt']].map(function(m){var on=S.scanMode===m[0];return '<button class="shbtn'+(on?' on':'')+'" data-act="scan-mode" data-v="'+m[0]+'" aria-pressed="'+on+'">'+m[1]+'</button>';}).join('')+'</div>';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
-    '<h1 class="h2">'+(drinkMode?'Drink a bottle':(menuMode?'Scan a wine list':'Scan a label'))+'</h1>'+(drinkMode?'':modes)+
-    (drinkMode?'<p class="muted">Photograph the label of the bottle you are opening. It finds the wine in your collection, then you say how many you are drinking.</p>':menuMode?'<p class="muted">Photograph each page of the list, close enough to read the small print. Up to 4 photos. It only reads what is printed; nothing is looked up until you ask.</p>':'<p class="muted">Photograph the front label. Add the back label too if it lists grapes or alcohol. Up to 3 photos.</p>')+
+    '<h1 class="h2">'+(drinkMode?'Drink a bottle':(recMode?'Scan a receipt':(menuMode?'Scan a wine list':'Scan a label')))+'</h1>'+(drinkMode?'':modes)+
+    (drinkMode?'<p class="muted">Photograph the label of the bottle you are opening. It finds the wine in your collection, then you say how many you are drinking.</p>':recMode?'<p class="muted">Photograph a wine shop receipt or order list, flat and in good light. You check every line, and change names or quantities, before anything is added to your Collection. Up to 4 photos.</p>':menuMode?'<p class="muted">Photograph each page of the list, close enough to read the small print. Up to 4 photos. It only reads what is printed; nothing is looked up until you ask.</p>':'<p class="muted">Photograph the front label. Add the back label too if it lists grapes or alcohol. Up to 3 photos.</p>')+
     photos+picker+'<div class="actions">'+actions+'</div></div>';
 }
 
@@ -767,6 +781,7 @@ function render(keep){
   else if(S.view==='detail')html=detailView();
   else if(S.view==='menu'&&S.menu)html=menuView();
   else if(S.view==='drink'&&S.drink)html=drinkView();
+  else if(S.view==='stats')html=statsView();
   else if(S.view==='import')html=importView();
   else if(S.view==='tools')html=toolsView();
   else{S.view='list';html=listView();}
@@ -836,7 +851,7 @@ function clearPhotos(){S.photos=[];S.full=[];}
 function onPhoto(input){
   var f=input.files&&input.files[0];
   if(!f||S.photos.length>=3)return;
-  Promise.all([shrink(f,520,0.72),S.scanMode==='menu'?shrink(f,1800,0.75):shrink(f,1400,0.8)]).then(function(r){S.photos.push(r[0]);S.full.push(r[1]);input.value='';render(true);toast('Photo added.');})
+  Promise.all([shrink(f,520,0.72),(S.scanMode==='menu'||S.scanMode==='receipt')?shrink(f,1800,0.75):shrink(f,1400,0.8)]).then(function(r){S.photos.push(r[0]);S.full.push(r[1]);input.value='';render(true);toast('Photo added.');})
     .catch(function(){S.photos.push(NOPREVIEW);S.full.push(null);input.value='';render(true);toast('Photo added without a preview.');});
 }
 function sampleDraft(){
@@ -856,7 +871,7 @@ function buildExamples(){
 }
 function startScan(){
   if(S.scanning)return;
-  if(S.scanMode==='menu'){startMenu();return;}
+  if(S.scanMode==='menu'||S.scanMode==='receipt'){startMenu();return;}
   if(S.scanMode==='drink'&&!S.full.filter(Boolean).length){toast('Add a photo of the label first.');return;}
   S.scanning=true;var tok=++S.tok;
   render(true);
@@ -923,19 +938,19 @@ function startMenu(){
   var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},90000);
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
-  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/menu',{method:'POST',headers:headers,body:JSON.stringify({images:imgs}),signal:ctl.signal});})
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/menu',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,mode:S.scanMode==='receipt'?'receipt':'menu'}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
       clearTimeout(timer);
       if(!S.scanning||tok!==S.tok)return;
       S.scanning=false;
       if(x.status===200&&x.j&&Array.isArray(x.j.wines)&&x.j.wines.length){
-        S.menu={items:x.j.wines.map(function(w){w.id=uid();return w;}),open:null};
+        S.menu={kind:S.scanMode==='receipt'?'receipt':'menu',items:x.j.wines.map(function(w){w.id=uid();w.qty=clampQty(w.qty);w.skip=false;return w;}),open:null};
         clearPhotos();nav('menu');
       }else if(x.status===422){
-        toast((x.j&&x.j.note)||'No wines found on that photo. Try a closer, sharper one.',9000);render(true);
+        toast((x.j&&x.j.note)||(S.scanMode==='receipt'?'No wines found on that receipt. Try a flatter, sharper photo.':'No wines found on that photo. Try a closer, sharper one.'),9000);render(true);
       }else if(x.status===503||x.status===404){
-        toast('Wine list reading is not switched on yet. Upload api/menu.js to your site.',9000);render(true);
+        toast('Reading is not switched on yet. Upload api/menu.js to your site.',9000);render(true);
       }else if(x.status===401){
         toast(S.user?'Your sign-in expired. Reload the page and sign in again.':'Passcode needed or wrong. Set it under Tools on the Cellar page.',7000);render(true);
       }else if(x.status===403){
@@ -967,6 +982,7 @@ function menuRow(it){
     (meta?'<span class="rmeta">'+esc(meta)+'</span>':'')+(where?'<span class="rmeta">'+flagHtml(it.country)+esc(where)+'</span>':'')+(it.price?'<span class="rwhere">'+esc(it.price)+'</span>':'')+(badge?'<span>'+badge+'</span>':'')+'</span></button>'+actions+'</div></li>';
 }
 function menuView(){
+  if(S.menu.kind==='receipt')return receiptView();
   var M=S.menu,items=M.items,sec=[],last=null,html='';
   items.forEach(function(it){var k=it.section||'';if(k!==last){sec.push({t:k,rows:[]});last=k;}sec[sec.length-1].rows.push(it);});
   sec.forEach(function(g){html+=(g.t?'<h2 class="h3" style="margin:14px 0 6px">'+esc(g.t)+'</h2>':'')+'<ul class="list">'+g.rows.map(menuRow).join('')+'</ul>';});
@@ -974,6 +990,27 @@ function menuView(){
     '<h1 class="h2">Wine list</h1><p class="muted">'+items.length+(items.length===1?' wine':' wines')+' read. Tap one to save it or look it up. Wines marked Check this were hard to read.</p>'+
     '<div class="field"><label class="flabel" for="f-mplace">Where is this list from? (optional)</label><input id="f-mplace" type="text" data-bind="menuPlace" value="'+esc(S.menuPlace)+'" placeholder="e.g. Osteria Pane, Madrid" autocomplete="off"></div>'+
     html+'</div>';
+}
+
+function receiptRow(it){
+  var m=menuMatch(it),meta=[it.producer,it.vintage].filter(Boolean).join(' · ');
+  var edit=S.menu.open===it.id;
+  return '<li><div class="row" style="display:block">'+
+    '<div class="lrow" style="align-items:flex-start;gap:10px"><label class="chk" style="margin:0;flex:1;align-items:flex-start"><input type="checkbox" data-act="rc-toggle" data-id="'+it.id+'"'+(it.skip?'':' checked')+' aria-label="Include this wine"><span class="rbody"><span class="rname">'+esc(it.name)+(it.unsure?' <span class="tag tag-unsure">Check this</span>':'')+'</span>'+
+    (meta?'<span class="rmeta">'+esc(meta)+'</span>':'')+(it.price?'<span class="rwhere">'+esc(it.price)+'</span>':'')+
+    (m?'<span class="wtag">'+(isWant(m)?'On your Want to try list':'Already yours: adds to '+bottlesText(qtyOf(m)))+'</span>':'')+'</span></label>'+
+    '<div class="trow" style="flex-wrap:nowrap"><button class="btn" data-act="rc-qty" data-id="'+it.id+'" data-d="-1" aria-label="One fewer"'+(it.qty<=1?' disabled':'')+'>−</button><strong style="min-width:24px;text-align:center">'+it.qty+'</strong><button class="btn" data-act="rc-qty" data-id="'+it.id+'" data-d="1" aria-label="One more">+</button></div></div>'+
+    '<div class="trow" style="margin-top:6px"><button class="link" data-act="rc-edit" data-id="'+it.id+'">'+(edit?'Done editing':'Edit name')+'</button></div>'+
+    (edit?'<div class="grid2" style="margin-top:6px"><div class="field full"><label class="flabel" for="rn-'+it.id+'">Wine name</label><input id="rn-'+it.id+'" type="text" value="'+esc(it.name)+'" data-id="'+it.id+'" data-mk="name" autocomplete="off"></div><div class="field"><label class="flabel" for="rp-'+it.id+'">Producer</label><input id="rp-'+it.id+'" type="text" value="'+esc(it.producer||'')+'" data-id="'+it.id+'" data-mk="producer" autocomplete="off"></div><div class="field"><label class="flabel" for="rv-'+it.id+'">Vintage</label><input id="rv-'+it.id+'" type="text" value="'+esc(it.vintage||'')+'" data-id="'+it.id+'" data-mk="vintage" autocomplete="off"></div></div>':'')+
+    '</div></li>';
+}
+function receiptTotals(){var n=0,b=0;S.menu.items.forEach(function(it){if(!it.skip&&String(it.name||'').trim()){n++;b+=it.qty;}});return {n:n,b:b};}
+function receiptView(){
+  var T=receiptTotals(),M=S.menu;
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Receipt</h1>'+
+    '<p class="muted">'+M.items.length+(M.items.length===1?' wine line':' wine lines')+' read. Untick anything that is not a wine, fix quantities, and tap Edit name if a name was misread. Names that match a wine you already have add bottles to it.</p>'+
+    '<ul class="list">'+M.items.map(receiptRow).join('')+'</ul>'+
+    '<div class="actions"><button class="btn btn-primary wide" data-act="rc-add"'+(T.n?'':' disabled')+'>Add '+T.n+(T.n===1?' wine':' wines')+' ('+bottlesText(T.b)+') to my Collection</button></div></div>';
 }
 function menuItem(id){return S.menu&&S.menu.items.filter(function(x){return x.id===id;})[0];}
 function menuWine(it){
@@ -1015,6 +1052,67 @@ function drinkView(){
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Drink a bottle</h1>'+
     (D.miss&&!w?'<p class="notice" role="status">Could not find “'+esc(D.miss)+'” in your collection. Pick it from the list below.</p>':'')+top+
     '<section class="card"><h2 class="h3">'+(w?'Not this wine?':'Choose from your collection')+'</h2><div class="searchbar" style="margin-top:8px"><input id="dq" type="search" data-dsearch value="'+esc(D.q)+'" placeholder="Search your collection" autocomplete="off" aria-label="Search your collection"></div><div id="dresults" style="margin-top:8px">'+drinkListHtml()+'</div></section></div>';
+}
+
+/* ---- Stats ---- */
+function statsGroup(ws,keyFn,labelFn){
+  var m={},order=[];
+  ws.forEach(function(w){
+    var k=keyFn(w);if(!k)return;
+    if(!m[k]){m[k]={k:k,label:labelFn(w),n:0,wines:0};order.push(k);}
+    m[k].n+=qtyOf(w);m[k].wines++;
+  });
+  return order.map(function(k){return m[k];}).sort(function(a,b){return b.n-a.n||cmpText(a.label,b.label);});
+}
+function statBars(title,rows,total,kind,missing,fmt,topN){
+  if(!rows.length&&!missing)return '';
+  topN=topN||8;
+  var show=rows.slice(0,topN),rest=rows.slice(topN),max=show.length?show[0].n:1;
+  var body=show.map(function(r){
+    var pct=Math.max(2,Math.round(r.n/max*100));
+    var inner='<span class="slabel">'+(fmt?fmt(r):esc(r.label))+'</span><span class="snum">'+r.n+'</span><span class="strack"><span class="sfill" style="width:'+pct+'%"></span></span>';
+    return kind?'<button class="srow" data-act="stat-go" data-k="'+kind+'" data-v="'+esc(r.k)+'" title="Show these in your Collection">'+inner+'</button>':'<div class="srow">'+inner+'</div>';
+  }).join('');
+  if(rest.length)body+='<p class="muted" style="margin-top:6px">And '+rest.length+(rest.length===1?' more':' more')+' ('+bottlesText(rest.reduce(function(a,r){return a+r.n;},0))+').</p>';
+  if(missing)body+='<p class="muted" style="margin-top:6px">'+bottlesText(missing)+' have no '+title.toLowerCase().replace('by ','')+' recorded.</p>';
+  return '<section class="card"><h2 class="h3">'+title+'</h2><div class="sbars">'+body+'</div></section>';
+}
+function statsView(){
+  var coll=S.wines.filter(function(w){return shelfOf(w,'coll');});
+  var bottles=coll.reduce(function(a,w){return a+qtyOf(w);},0);
+  var tiles=function(arr){return '<div class="stiles">'+arr.map(function(t){return '<div class="stile"><span class="sbig">'+t[0]+'</span><span class="slab">'+t[1]+'</span></div>';}).join('')+'</div>';};
+  var tastedW=S.wines.filter(function(w){return shelfOf(w,'cellar');}),tastings=tastedW.reduce(function(a,w){return a+w.tastings.length;},0);
+  var ratings=[];tastedW.forEach(function(w){w.tastings.forEach(function(t){if(t.rating)ratings.push(t.rating);});});
+  var avg=ratings.length?(ratings.reduce(function(a,b){return a+b;},0)/ratings.length).toFixed(1):'';
+  var wantN=S.wines.filter(function(w){return isWant(w);}).length;
+  var out='<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Stats</h1>';
+  if(!coll.length){
+    out+='<section class="card"><p class="etitle">Your collection is empty</p><p class="muted">Add bottles by scanning a label or a receipt, or by importing a spreadsheet. Your numbers will show here.</p></section>';
+  }else{
+    var types=statsGroup(coll,function(w){return w.type;},function(w){return TYPE_LABEL[w.type]||w.type;});
+    var cMissing=0,rMissing=0,gMissing=0;
+    coll.forEach(function(w){if(!countryOf(w))cMissing+=qtyOf(w);if(!String(w.region||'').trim())rMissing+=qtyOf(w);if(!grapesOf(w).length)gMissing+=qtyOf(w);});
+    var countries=statsGroup(coll,function(w){var c=countryOf(w);return c;},function(w){return countryOf(w);});
+    var regions=statsGroup(coll,function(w){return String(w.region||'').trim()?regionKey(w.region):'';},function(w){return String(w.region).trim();});
+    var gm={},gorder=[];
+    coll.forEach(function(w){grapesOf(w).forEach(function(g){var k=grapeKey(g);if(!gm[k]){gm[k]={k:k,label:g,n:0};gorder.push(k);}gm[k].n+=qtyOf(w);});});
+    var grapes=gorder.map(function(k){return gm[k];}).sort(function(a,b){return b.n-a.n||cmpText(a.label,b.label);});
+    var dec=function(w){var v=vintageNum(w);if(v)return v<2000?'Before 2000':(Math.floor(v/10)*10)+'s';return /nv/i.test(String(w.vintage||''))?'Non-vintage':'';};
+    var decOrder=['Before 2000','2000s','2010s','2020s','Non-vintage'];
+    var decs=statsGroup(coll,dec,function(w){return dec(w);}).sort(function(a,b){return decOrder.indexOf(a.k)-decOrder.indexOf(b.k);});
+    var vMissing=0;coll.forEach(function(w){if(!dec(w))vMissing+=qtyOf(w);});
+    var past=0,soon=0,dated=0,now=Date.now(),year=365*86400000;
+    coll.forEach(function(w){var e=drinkEnd(w);if(!e)return;dated+=qtyOf(w);if(e<now)past+=qtyOf(w);else if(e<now+year)soon+=qtyOf(w);});
+    out+=tiles([[bottles,bottles===1?'bottle':'bottles'],[coll.length,coll.length===1?'wine':'wines'],[countries.length,countries.length===1?'country':'countries'],[past,'past their best']]);
+    out+=statBars('By type',types,bottles,'type',0,function(r){return dot(r.k)+esc(r.label);},8);
+    out+=statBars('By country',countries,bottles,'country',cMissing,function(r){return flagHtml(r.label)+esc(r.label);},8);
+    out+=statBars('By region',regions,bottles,'region',rMissing,null,8);
+    out+=statBars('By grape',grapes,bottles,'grape',gMissing,null,8);
+    out+=statBars('By vintage',decs,bottles,'',vMissing,null,8);
+    if(dated)out+='<section class="card"><h2 class="h3">Drinking window</h2>'+tiles([[past,'past their best'],[soon,'to drink within a year'],[dated-past-soon,'with more time']])+'<p class="muted" style="margin-top:6px">Based on the Drink until date. '+bottlesText(bottles-dated)+' have no date yet.</p></section>';
+  }
+  out+='<section class="card"><h2 class="h3">Tasting</h2>'+tiles([[tastedW.length,'wines tasted'],[tastings,tastings===1?'tasting':'tastings'],[avg||'—','average rating'],[wantN,'want to try']])+'</section>';
+  return out+'</div>';
 }
 
 /* ---- Web lookup ---- */
@@ -1511,7 +1609,36 @@ var ACT={
     S.looking=true;S.menu.lookId=it.id;render(true);
     liveLookup(it,function(){return S.view==='menu'&&!!S.menu;});
   },
-  'scan-mode':function(el){if(S.scanning)return;var m=el.dataset.v==='menu'?'menu':'label';if(m===S.scanMode)return;S.scanMode=m;clearPhotos();render(true);},
+  'rc-toggle':function(el){var it=menuItem(el.dataset.id);if(!it)return;it.skip=!it.skip;render(true);},
+  'rc-qty':function(el){var it=menuItem(el.dataset.id);if(!it)return;it.qty=Math.max(1,Math.min(999,it.qty+(+el.dataset.d)));render(true);},
+  'rc-edit':function(el){var M=S.menu;if(!M)return;M.open=M.open===el.dataset.id?null:el.dataset.id;render(true);},
+  'rc-add':function(){
+    var M=S.menu;if(!M)return;
+    var wines=0,bottles=0,now=Date.now(),i=0;
+    M.items.forEach(function(it){
+      if(it.skip||!String(it.name||'').trim())return;
+      var ex=menuMatch(it);
+      if(ex){ex.qty=qtyOf(ex)+it.qty;delete ex.status;if(!ex.paid&&it.price)ex.paid=String(it.price).slice(0,40);}
+      else{
+        var w=menuWine(it);w.id=uid();w.photos=[];w.notes='';w.sampleKey='';w.research=null;w.added=now-(i++);w.tastings=[];w.qty=it.qty;
+        if(it.price){w.paid=String(it.price).slice(0,40);w.src.paid='manual';}
+        w.imported=false;S.wines.unshift(w);
+      }
+      wines++;bottles+=it.qty;
+    });
+    if(!wines)return;
+    persist();S.shelf='coll';S.type='all';S.q='';saveView();S.menu=null;
+    toast('Added '+wines+(wines===1?' wine':' wines')+' ('+bottlesText(bottles)+') to your Collection.',6000);
+    nav('list');
+  },
+  'go-stats':function(){nav('stats');},
+  'stat-go':function(el){
+    var k=el.dataset.k,v=el.dataset.v;
+    S.f={country:'',region:'',grape:'',rating:0,tasted:''};S.type='all';S.q='';S.shelf='coll';
+    if(k==='type')S.type=v;else if(k==='country')S.f.country=v;else if(k==='region')S.f.region=v;else if(k==='grape')S.f.grape=v;
+    saveView();nav('list');
+  },
+  'scan-mode':function(el){if(S.scanning)return;var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');if(m===S.scanMode)return;S.scanMode=m;clearPhotos();render(true);},
   'rm-photo':function(el){S.photos.splice(+el.dataset.i,1);S.full.splice(+el.dataset.i,1);render(true);},
   'read':function(){startScan();},
   'sample':function(){startScan();},
@@ -1817,6 +1944,7 @@ function onBind(e){
     if(box)box.innerHTML=resultsHtml();
     return;
   }
+  if(t.hasAttribute&&t.hasAttribute('data-mk')){var mi=menuItem(t.getAttribute('data-id'));if(mi)mi[t.getAttribute('data-mk')]=t.value;return;}
   if(t.hasAttribute&&t.hasAttribute('data-dsearch')){
     if(S.drink){S.drink.q=t.value;var db=document.getElementById('dresults');if(db)db.innerHTML=drinkListHtml();}
     return;
