@@ -293,15 +293,52 @@ function hay(w){
   w.tastings.forEach(function(t){parts.push(t.where,t.taster,t.notes);});
   return norm(parts.join(' '));
 }
+/* Words that mean the same thing in different languages, so Italia finds Italy and rosso finds red.
+   Written without accents; underscores stand for spaces. */
+var ALIAS_GROUPS=[
+  /* countries */
+  'italy italia italie italien','spain espana spagna espagne spanien','france francia frankreich','germany germania deutschland alemania allemagne',
+  'portugal portogallo','austria osterreich autriche','switzerland svizzera suisse schweiz suiza','greece grecia grece',
+  'united_states usa estados_unidos stati_uniti etats_unis','south_africa sudafrica afrique_du_sud','new_zealand nuova_zelanda nueva_zelanda nouvelle_zelande',
+  'chile cile','hungary ungheria hungria ungarn hongrie','croatia croazia croacia','lebanon libano','turkey turchia turquia turquie',
+  /* wine types */
+  'red rosso tinto rouge rot','white bianco blanco blanc weiss branco','rose rosato rosado','sparkling spumante frizzante espumoso mousseux sekt',
+  'orange arancione','dessert passito dulce',
+  /* regions */
+  'tuscany toscana toscane toskana','piedmont piemonte piemont','sicily sicilia sicile sizilien','lombardy lombardia lombardei','apulia puglia pouilles',
+  'sardinia sardegna sardaigne cerdena','burgundy bourgogne borgogna borgona burgund','provence provenza','alsace alsazia elsass',
+  'catalonia catalunya cataluna catalogna','andalusia andalucia andalusien','liguria ligurie','lazio latium','castile castilla castiglia',
+  'basque_country pais_vasco paesi_baschi','canary_islands canarias islas_canarias canarie isole_canarie','balearic_islands baleares islas_baleares baleari',
+  'south_tyrol alto_adige sudtirol','moselle mosel mosella','rhone rodano','rhine rheinhessen reno rhein',
+  /* grapes */
+  'grenache garnacha','syrah shiraz','mourvedre monastrell mataro','pinot_gris pinot_grigio grauburgunder','pinot_noir pinot_nero spatburgunder',
+  'pinot_blanc pinot_bianco weissburgunder','muscat moscato moscatel','trebbiano ugni_blanc','vermentino rolle'
+].map(function(g){return g.split(' ');});
+var ALIAS={};
+ALIAS_GROUPS.forEach(function(g){g.forEach(function(t){ALIAS[t]=g;});});
+var ALIAS_PHRASES=Object.keys(ALIAS).filter(function(k){return k.indexOf('_')!==-1;});
+
+function queryTokens(q){
+  var t=' '+norm(q).replace(/[^a-z0-9]+/g,' ').trim()+' ';
+  ALIAS_PHRASES.forEach(function(k){t=t.split(' '+k.replace(/_/g,' ')+' ').join(' '+k+' ');});
+  return t.split(' ').filter(Boolean);
+}
+function wordMatch(words,H,alt){
+  alt=alt.replace(/_/g,' ');
+  if(alt.indexOf(' ')!==-1)return (' '+H+' ').indexOf(' '+alt+' ')!==-1;
+  return words.some(function(x){return x===alt||(alt.length>=4&&x.indexOf(alt)===0);});
+}
 function score(w,q){
   var words=hay(w).split(/[^a-z0-9]+/).filter(Boolean);
   var H=words.join(' ');
-  var total=0,toks=norm(q).split(/\s+/).filter(Boolean);
+  var total=0,toks=queryTokens(q);
   for(var i=0;i<toks.length;i++){
-    var tok=toks[i];
-    if(H.indexOf(tok)!==-1){total+=2;continue;}
-    var lim=tok.length>=7?2:(tok.length>=4?1:0);
-    var ok=lim>0&&words.some(function(x){return lev(x,tok,lim)<=lim;});
+    var tok=toks[i],plain=tok.replace(/_/g,' ');
+    if(H.indexOf(plain)!==-1){total+=2;continue;}
+    var group=ALIAS[tok];
+    if(group&&group.some(function(a){return wordMatch(words,H,a);})){total+=2;continue;}
+    var lim=plain.length>=7?2:(plain.length>=4?1:0);
+    var ok=lim>0&&words.some(function(x){return lev(x,plain,lim)<=lim;});
     if(ok){total+=1;continue;}
     return 0;
   }
