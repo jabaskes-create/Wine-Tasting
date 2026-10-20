@@ -617,7 +617,7 @@ function toolsView(){
     '<button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
-      toolBtn('imp-open','Import spreadsheet','Bring in a CSV list or rows copied from a spreadsheet')+
+      toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
       (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
