@@ -128,7 +128,7 @@ textarea.csv{font:12px/1.4 var(--font-mono);min-height:120px}
 .count{font:400 11px var(--font-mono)}
 .tag{font:500 10.5px var(--font-mono);letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:4px;white-space:nowrap}
 .tag-label{color:var(--ok);background:var(--ok-soft)}
-.tag-researched{color:var(--warn);background:var(--warn-soft)}
+.tag-researched,.tag-inferred{color:var(--warn);background:var(--warn-soft)}
 .tag-edited,.tag-manual{color:var(--info);background:var(--info-soft)}
 .tag-none{color:var(--muted);border:1px dashed var(--line)}
 .tag-unsure{color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn)}
@@ -221,7 +221,7 @@ var app=document.getElementById('app');
 var TYPES=['red','white','rosé','sparkling','orange','dessert'];
 var TYPE_LABEL={red:'Red',white:'White','rosé':'Rosé',sparkling:'Sparkling',orange:'Orange',dessert:'Dessert'};
 var TYPE_CLS={red:'red',white:'white','rosé':'rose',sparkling:'sparkling',orange:'orange',dessert:'dessert'};
-var TAG_TXT={unsure:'Check this',label:'On label',researched:'Researched',edited:'Edited',manual:'Added by you',none:'Not on label'};
+var TAG_TXT={unsure:'Check this',label:'On label',researched:'Researched',inferred:'From region',edited:'Edited',manual:'Added by you',none:'Not on label'};
 
 var FIELDS=[
   {k:'name',l:'Wine name',w:'full',ph:'e.g. Chianti Classico Riserva'},
@@ -492,7 +492,7 @@ function listView(){
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
-    '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="imp-open">Import spreadsheet</button><button class="btn btn-ghost" data-act="download">Download spreadsheet</button><button class="btn btn-ghost" data-act="csv">Copy for spreadsheet</button>'+
+    '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="imp-open">Import spreadsheet</button>'+(missingCountries().length?'<button class="btn btn-ghost" data-act="fill-countries"'+(S.filling?' disabled':'')+'>'+(S.filling?'Filling in…':'Fill in missing countries ('+missingCountries().length+')')+'</button>':'')+'<button class="btn btn-ghost" data-act="download">Download spreadsheet</button><button class="btn btn-ghost" data-act="csv">Copy for spreadsheet</button>'+
     ((hasEx&&!S.user)?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
     (S.user?'<button class="btn btn-ghost" data-act="sign-out">Sign out</button>':'<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button>')+'</div>'+passField+csvPanel+'</section>'+
   '</div>';
@@ -744,6 +744,43 @@ function sheetText(sep){
 function csvText(){return sheetText(',');}
 
 
+/* ---- Country from region ---- */
+/* Well-known regions and appellations that sit in exactly one country. Underscores stand for spaces. */
+var REGION_TABLE={
+  'Italy':'tuscany toscana chianti chianti_classico brunello_di_montalcino montalcino montepulciano vino_nobile_di_montepulciano bolgheri maremma piedmont piemonte barolo barbaresco langhe roero asti gavi barbera_d_alba dolcetto_d_alba veneto valpolicella amarone soave prosecco conegliano valdobbiadene friuli collio sicily sicilia etna marsala sardinia sardegna cannonau puglia apulia salento campania taurasi irpinia fiano_di_avellino basilicata abruzzo montepulciano_d_abruzzo marche verdicchio rosso_conero umbria montefalco orvieto lazio frascati emilia_romagna lambrusco romagna lombardy lombardia franciacorta valtellina oltrepo_pavese trentino alto_adige sudtirol sudtirol liguria cinque_terre dolceacqua rossese_di_dolceacqua riviera_ligure_di_ponente valle_d_aosta aosta molise calabria',
+  'Spain':'rioja rioja_alta rioja_alavesa ribera_del_duero rias_baixas rias_biaxas priorat penedes cava rueda toro bierzo navarra jumilla la_mancha valdepenas jerez sherry montilla_moriles somontano calatayud campo_de_borja utiel_requena alicante yecla ribeiro valdeorras canary_islands canarias lanzarote tenerife la_palma gran_canaria txakoli getariako mallorca binissalem catalonia cataluna galicia andalusia castilla_y_leon castilla_la_mancha extremadura',
+  'France':'bordeaux medoc haut_medoc margaux pauillac saint_julien saint_estephe pessac_leognan graves sauternes saint_emilion pomerol entre_deux_mers burgundy bourgogne chablis cote_d_or cote_de_nuits cote_de_beaune meursault puligny_montrachet chassagne_montrachet gevrey_chambertin nuits_saint_georges pommard volnay beaujolais morgon fleurie brouilly macon pouilly_fuisse champagne alsace loire sancerre pouilly_fume vouvray muscadet chinon saumur anjou rhone chateauneuf_du_pape hermitage cote_rotie crozes_hermitage gigondas vacqueyras provence bandol cassis languedoc roussillon corbieres minervois faugeres jura savoie cahors madiran bergerac corsica',
+  'Portugal':'douro porto vinho_verde dao alentejo bairrada madeira setubal lisboa tejo',
+  'Germany':'mosel rheingau rheinhessen pfalz nahe franken wurttemberg ahr saale',
+  'Austria':'wachau kamptal kremstal burgenland steiermark wagram',
+  'Switzerland':'valais vaud ticino',
+  'Greece':'santorini nemea naoussa peloponnese',
+  'Hungary':'tokaj tokaji eger villany',
+  'United States':'california napa napa_valley sonoma sonoma_coast russian_river_valley paso_robles santa_barbara santa_rita_hills lodi mendocino willamette_valley oregon washington_state columbia_valley walla_walla finger_lakes',
+  'Australia':'barossa barossa_valley mclaren_vale margaret_river hunter_valley yarra_valley coonawarra eden_valley clare_valley tasmania adelaide_hills',
+  'New Zealand':'marlborough central_otago hawke_s_bay hawkes_bay martinborough gisborne',
+  'Chile':'maipo maipo_valley colchagua casablanca maule aconcagua',
+  'Argentina':'mendoza salta patagonia uco_valley lujan_de_cuyo cafayate',
+  'South Africa':'stellenbosch swartland paarl franschhoek constantia hemel_en_aarde walker_bay',
+  'Lebanon':'bekaa',
+  'Canada':'niagara okanagan',
+  'England':'sussex'
+};
+var REGION_KEYS=[];
+Object.keys(REGION_TABLE).forEach(function(c){REGION_TABLE[c].split(' ').forEach(function(k){REGION_KEYS.push([k.replace(/_/g,' '),c]);});});
+REGION_KEYS.sort(function(a,b){return b[0].length-a[0].length;});
+/* Returns a country only when the region, appellation or name points to one country. Conflicts return nothing. */
+function inferCountry(w){
+  var H=' '+norm([w.region,w.appellation,w.name].join(' | ')).replace(/[^a-z0-9]+/g,' ').trim()+' ';
+  var found={},n=0,i;
+  for(i=0;i<REGION_KEYS.length;i++){
+    if(H.indexOf(' '+REGION_KEYS[i][0]+' ')!==-1&&!found[REGION_KEYS[i][1]]){found[REGION_KEYS[i][1]]=1;n++;}
+  }
+  return n===1?Object.keys(found)[0]:'';
+}
+function missingCountries(){return S.wines.filter(function(w){return !(w.country||'').trim()&&((w.region||w.appellation||w.name||'').trim());});}
+
+
 /* ---- Spreadsheet import ---- */
 var IMP_FIELDS=[
   ['name','Wine name'],['producer','Producer'],['vintage','Vintage'],['type','Type'],['grapes','Grapes'],['country','Country'],['region','Region'],
@@ -884,6 +921,7 @@ function buildImport(im){
     if(!v.name){noName++;return;}
     var w={name:v.name.slice(0,120),producer:v.producer.slice(0,120),vintage:impVintage(v.vintage),type:impType(v.type||''),grapes:v.grapes.slice(0,160),
       country:impCountry(v.country).slice(0,60),region:v.region.slice(0,80),appellation:v.appellation.slice(0,120),abv:impAbv(v.abv),volume:impVolume(v.volume),notes:v.wnotes.slice(0,280)};
+    if(!w.country){var ic=inferCountry(w);if(ic){w.country=ic;w.countryInferred=true;}}
     var t={date:impDate(v.date,dorder),where:v.place.slice(0,120),taster:v.taster.slice(0,60),rating:impRating(v.rating),price:v.price.slice(0,40),notes:v.tnotes.slice(0,280)};
     var has=!!(t.date||t.where||t.taster||t.rating||t.price||t.notes);
     var key=impKeyOf(w),g=groups[key];
@@ -1065,6 +1103,39 @@ var ACT={
       toast('Spreadsheet file saved. Open it in Excel or Google Sheets.');
     }catch(e){S.csv=csvText();render(true);}
   },
+  'fill-countries':function(){
+    var list=missingCountries();
+    if(!list.length){toast('Every wine already has a country.');return;}
+    if(S.filling)return;
+    var done=0,left=[];
+    list.forEach(function(w){
+      var c=inferCountry(w);
+      if(c){w.country=c;w.src=w.src||{};w.src.country='inferred';done++;}else left.push(w);
+    });
+    var finish=function(extra){
+      S.filling=false;persist();
+      toast('Filled in '+(done+extra)+(done+extra===1?' country':' countries')+(left.length-extra>0?'. '+(left.length-extra)+' left blank because the region did not point to one country.':'.'),8000);
+      render(true);
+    };
+    if(!left.length){finish(0);return;}
+    S.filling=true;render(true);
+    var items=left.slice(0,60).map(function(w){return {region:w.region||'',appellation:w.appellation||'',name:w.name||'',producer:w.producer||''};});
+    var headers={'Content-Type':'application/json'};
+    if(S.pass)headers['x-passcode']=S.pass;
+    idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/countries',{method:'POST',headers:headers,body:JSON.stringify({items:items})});})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
+      .then(function(x){
+        var extra=0;
+        if(x.status===200&&x.j&&Array.isArray(x.j.countries)){
+          x.j.countries.forEach(function(c,i){
+            var w=left[i];
+            if(w&&typeof c==='string'&&c.trim()&&!(w.country||'').trim()){w.country=c.trim().slice(0,40);w.src=w.src||{};w.src.country='inferred';extra++;}
+          });
+        }
+        finish(extra);
+      })
+      .catch(function(){finish(0);});
+  },
   'imp-open':function(){S.imp=null;nav('import');},
   'imp-cancel':function(){S.imp=null;nav('list');},
   'imp-parse':function(){var el=document.getElementById('impText');impLoad(el?el.value:'');},
@@ -1100,6 +1171,7 @@ var ACT={
       if(it.existing){it.tastings.forEach(function(t){it.existing.tastings.push(Object.assign({id:uid()},t));});return;}
       var w=it.wine,src={};
       FIELD_KEYS.forEach(function(k){src[k]=w[k]?'manual':'none';});
+      if(w.countryInferred){src.country='inferred';delete w.countryInferred;}
       var typed=w.type;w.type=typed||'red';if(!typed)src.type='none';
       w.id=uid();w.src=src;w.photos=[];w.sampleKey='';w.research=null;w.imported=true;w.added=now-i;
       w.tastings=it.tastings.map(function(t){return Object.assign({id:uid()},t);});
