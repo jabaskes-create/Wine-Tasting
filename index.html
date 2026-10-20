@@ -571,11 +571,11 @@ function resultsHtml(){
   var ws=filtered();
   if(!ws.length){
     if(shelfWines().length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.'+(filterCount()?' Your filters may be hiding wines.':'')+'</p>'+(filterCount()?'<div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
-    if(S.shelf==='want')return '<div class="empty"><p class="etitle">Nothing on your list yet</p><p>When you scan a bottle you would like to try, choose Want to try instead of Save to cellar.</p></div>';
+    if(S.shelf==='want')return '<div class="empty"><p class="etitle">Nothing on your list yet</p><p>Scan a bottle and choose Want to try, or type in a wine you have heard about.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="add-typed">+ Add a wine by name</button></div></div>';
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+shelfWines().length+'</p>':'';
-  return line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
+  return (S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">+ Add a wine by name</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
@@ -644,7 +644,7 @@ function reviewView(){
   return '<div class="wrap">'+
     '<button class="back" data-act="'+(edit?'cancel-edit':'go-list')+'">← '+(edit?'Back to wine':'Cancel')+'</button>'+
     '<h1 class="h2">'+(edit?'Edit wine':'Review the label')+'</h1>'+
-    (edit?'':(d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
+    (edit?'':(d.manual?'<p class="notice"><strong>Typed in by you.</strong> Add what you know, even just a name. A bottle you have not found yet is fine.</p>':d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
     '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
     '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price range. It only fills empty fields, and each result is tagged Researched with its sources.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
@@ -907,6 +907,7 @@ function saveNew(force,status){
   FIELD_KEYS.forEach(function(k){w[k]=(w[k]||'').trim();});
   w.id=uid();w.src=d.src;w.photos=d.photos||[];w.notes=d.notes.trim();w.sampleKey=d.sampleKey;w.research=d.research;w.added=Date.now();
   FIELD_KEYS.forEach(function(k){if(w.src[k]==='unsure')w.src[k]='label';});
+  if(d.manual){w.src={};FIELD_KEYS.forEach(function(k){w.src[k]=w[k]?'manual':'none';});}
   if(d.orig){w.scanned=d.orig;w.fixed=FIELD_KEYS.some(function(k){return (d.orig[k]||'')!==(w[k]||'');});}
   if(status==='want'){w.status='want';w.seen=(d.seen||'').trim().slice(0,120);w.tastings=[];}
   else{w.tastings=hasTasting(d.t)?[tastingFrom(d.t)]:[];
@@ -1238,6 +1239,11 @@ var ACT={
   },
   'save-new':function(){saveNew(false);},
   'dup-new':function(){saveNew(true,S.dupWant?'want':'');},
+  'add-typed':function(){
+    var d={src:{},photos:[],notes:'',research:null,sampleKey:'',live:false,manual:true,seen:'',t:blankTasting()};
+    FIELD_KEYS.forEach(function(k){d[k]='';});d.type='red';
+    S.draft=d;S.dup=null;nav('review');
+  },
   'save-want':function(){saveNew(false,'want');},
   'shelf':function(el){S.shelf=el.dataset.v==='want'?'want':'cellar';S.type='all';saveView();render(true);},
   'to-cellar':function(){var w=getSel();if(!w)return;delete w.status;S.shelf='cellar';persist();saveView();toast('Moved to your cellar.');render(true);},
