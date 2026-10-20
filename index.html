@@ -93,6 +93,10 @@ textarea{resize:vertical;min-height:84px}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .searchbar input{padding:12px 14px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.sfbar{display:flex;gap:8px;align-items:center}
+.sfbar .srt{flex:1;min-width:0;min-height:44px}
+.sfbar .btn.on{border-color:var(--accent);color:var(--accent)}
+.fpanel{padding:14px}
 .chip{white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;border-radius:999px;font:500 14px var(--font-body);cursor:pointer;min-height:36px}
 .chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .count-line{font:400 12px var(--font-mono);color:var(--muted)}
@@ -277,7 +281,8 @@ var RESEARCH={
 };
 
 /* ---- Small helpers ---- */
-var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null};
+var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',f:{country:'',region:'',grape:'',rating:0,tasted:''},fOpen:false};
+try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.f&&typeof _v.f==='object')Object.keys(S.f).forEach(function(k){if(_v.f[k]!==undefined)S.f[k]=_v.f[k];});}}catch(e){}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
@@ -469,15 +474,82 @@ function researchHtml(r){
 
 /* list */
 function chip(v,l){return '<button class="chip'+(S.type===v?' on':'')+'" data-act="filter" data-v="'+v+'" aria-pressed="'+(S.type===v)+'">'+l+'</button>';}
-function filtered(){
-  var ws=S.wines.filter(function(w){return S.type==='all'||w.type===S.type;});
-  if(S.q.trim()){
-    ws=ws.map(function(w){return [w,score(w,S.q)];}).filter(function(x){return x[1]>0;})
-      .sort(function(a,b){return b[1]-a[1]||b[0].added-a[0].added;}).map(function(x){return x[0];});
-  }else{
-    ws=ws.slice().sort(function(a,b){return b.added-a.added;});
+/* ---- Sort and filter ---- */
+var SORTS=[['added','Recently added'],['tasted','Last tasted'],['rating','Highest rated'],['name','Name A to Z'],['producer','Producer A to Z'],['vintage-new','Vintage, newest first'],['vintage-old','Vintage, oldest first']];
+function saveView(){try{localStorage.setItem('bottle-notes-view-v1',JSON.stringify({sort:S.sort,f:S.f}));}catch(e){}}
+function regionKey(v){var k=norm(v).trim().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),g=ALIAS[k];return g?g[0]:k;}
+function countryOf(w){return impCountry(w.country);}
+function grapesOf(w){
+  return String(w.grapes||'').split(/[,;\/&]|\s+e\s+|\s+and\s+|\s+y\s+/i).map(function(g){return g.replace(/\d+\s*%/g,'').replace(/\s+/g,' ').trim();}).filter(Boolean);
+}
+function grapeKey(g){var k=norm(g).trim().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),a=ALIAS[k];return a?a[0]:k;}
+function filterCount(){var f=S.f,n=0;if(f.country)n++;if(f.region)n++;if(f.grape)n++;if(f.rating)n++;if(f.tasted)n++;return n;}
+function passes(w){
+  var f=S.f;
+  if(f.country&&norm(countryOf(w))!==norm(f.country))return false;
+  if(f.region&&regionKey(w.region)!==f.region)return false;
+  if(f.grape&&!grapesOf(w).some(function(g){return grapeKey(g)===f.grape;}))return false;
+  if(f.rating&&avgRating(w)<f.rating)return false;
+  if(f.tasted==='yes'&&!w.tastings.length)return false;
+  if(f.tasted==='no'&&w.tastings.length)return false;
+  return true;
+}
+/* Choices for the filter lists come from the wines you have, so there are never empty options. */
+function filterOptions(){
+  var countries={},regions={},grapes={};
+  S.wines.forEach(function(w){
+    var c=countryOf(w);if(c)countries[norm(c)]=countries[norm(c)]||c;
+  });
+  S.wines.forEach(function(w){
+    if(S.f.country&&norm(countryOf(w))!==norm(S.f.country))return;
+    var r=(w.region||'').trim();if(r){var k=regionKey(r);if(!regions[k])regions[k]=r;}
+  });
+  S.wines.forEach(function(w){grapesOf(w).forEach(function(g){var k=grapeKey(g);if(k&&!grapes[k])grapes[k]=g;});});
+  var list=function(o){return Object.keys(o).map(function(k){return [k,o[k]];}).sort(function(a,b){return norm(a[1]).localeCompare(norm(b[1]));});};
+  return {countries:list(countries),regions:list(regions),grapes:list(grapes)};
+}
+function cmpText(a,b){return norm(a||'').localeCompare(norm(b||''),undefined,{numeric:true,sensitivity:'base'});}
+function vintageNum(w){var m=/^(19|20)\d{2}$/.exec(String(w.vintage||'').trim());return m?+m[0]:0;}
+function sorter(mode){
+  var tie=function(a,b){return (b.added||0)-(a.added||0);};
+  switch(mode){
+    case 'tasted':return function(a,b){var x=lastTasting(a),y=lastTasting(b),dx=(x&&x.date)||'',dy=(y&&y.date)||'';if(!dx&&!dy)return tie(a,b);if(!dx)return 1;if(!dy)return -1;return dy.localeCompare(dx)||tie(a,b);};
+    case 'rating':return function(a,b){var x=avgRating(a),y=avgRating(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y-x||tie(a,b);};
+    case 'name':return function(a,b){return cmpText(a.name,b.name)||tie(a,b);};
+    case 'producer':return function(a,b){var x=a.producer||'',y=b.producer||'';if(!x&&!y)return cmpText(a.name,b.name);if(!x)return 1;if(!y)return -1;return cmpText(x,y)||cmpText(a.name,b.name);};
+    case 'vintage-new':return function(a,b){var x=vintageNum(a),y=vintageNum(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y-x||tie(a,b);};
+    case 'vintage-old':return function(a,b){var x=vintageNum(a),y=vintageNum(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return x-y||tie(a,b);};
+    default:return tie;
   }
-  return ws;
+}
+function filtered(){
+  var ws=S.wines.filter(function(w){return (S.type==='all'||w.type===S.type)&&passes(w);});
+  if(S.q.trim()){
+    var ranked=ws.map(function(w){return [w,score(w,S.q)];}).filter(function(x){return x[1]>0;});
+    /* With a search, best match first, unless a sort has been chosen on purpose. */
+    if(S.sort==='added')ranked.sort(function(a,b){return b[1]-a[1]||b[0].added-a[0].added;});
+    else{var cmp=sorter(S.sort);ranked.sort(function(a,b){return cmp(a[0],b[0]);});}
+    return ranked.map(function(x){return x[0];});
+  }
+  return ws.slice().sort(sorter(S.sort));
+}
+function sortFilterBar(){
+  var n=filterCount(),o=filterOptions();
+  var sortSel='<label class="vh" for="sortSel">Sort</label><select id="sortSel" class="srt" aria-label="Sort wines">'+SORTS.map(function(x){return '<option value="'+x[0]+'"'+(S.sort===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select>';
+  var panel='';
+  if(S.fOpen){
+    var opt=function(list,cur,all){return '<option value="">'+all+'</option>'+list.map(function(x){return '<option value="'+esc(x[0])+'"'+(cur===x[0]?' selected':'')+'>'+esc(x[1])+'</option>';}).join('');};
+    var countryCur=S.f.country?norm(S.f.country):'';
+    var countryOpts='<option value="">Any country</option>'+o.countries.map(function(x){return '<option value="'+esc(x[1])+'"'+(countryCur===x[0]?' selected':'')+'>'+esc(x[1])+'</option>';}).join('');
+    panel='<div class="fpanel card"><div class="grid2">'+
+      '<div class="field"><label class="flabel" for="f-country">Country</label><select id="f-country" class="flt" data-k="country">'+countryOpts+'</select></div>'+
+      '<div class="field"><label class="flabel" for="f-region">Region</label><select id="f-region" class="flt" data-k="region">'+opt(o.regions,S.f.region,'Any region')+'</select></div>'+
+      '<div class="field"><label class="flabel" for="f-grape">Grape</label><select id="f-grape" class="flt" data-k="grape">'+opt(o.grapes,S.f.grape,'Any grape')+'</select></div>'+
+      '<div class="field"><label class="flabel" for="f-rating">Rating</label><select id="f-rating" class="flt" data-k="rating">'+[['0','Any rating'],['3','3 stars and up'],['4','4 stars and up'],['5','5 stars']].map(function(x){return '<option value="'+x[0]+'"'+(String(S.f.rating)===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></div>'+
+      '<div class="field"><label class="flabel" for="f-tasted">Tasted</label><select id="f-tasted" class="flt" data-k="tasted">'+[['','Tasted or not'],['yes','Tasted'],['no','Not tasted yet']].map(function(x){return '<option value="'+x[0]+'"'+(S.f.tasted===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></div>'+
+      '</div>'+(n?'<div class="trow" style="margin-top:8px"><button class="btn btn-ghost" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
+  }
+  return '<div class="sfbar">'+sortSel+'<button class="btn'+(n?' on':'')+'" data-act="flt-toggle" aria-expanded="'+S.fOpen+'">Filters'+(n?' ('+n+')':'')+'</button></div>'+panel;
 }
 function rowHtml(w){
   var avg=avgRating(w),last=lastTasting(w),n=w.tastings.length;
@@ -492,10 +564,10 @@ function rowHtml(w){
 function resultsHtml(){
   var ws=filtered();
   if(!ws.length){
-    if(S.wines.length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.</p></div>';
+    if(S.wines.length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.'+(filterCount()?' Your filters may be hiding wines.':'')+'</p>'+(filterCount()?'<div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
-  var line=(S.q.trim()||S.type!=='all')?'<p class="count-line">Showing '+ws.length+' of '+S.wines.length+'</p>':'';
+  var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+S.wines.length+'</p>':'';
   return line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
@@ -534,7 +606,7 @@ function listView(){
     '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan a label</button></div></header>'+
     (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
-    '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+
+    '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+sortFilterBar()+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
   '</div>';
 }
@@ -1244,6 +1316,8 @@ var ACT={
       .catch(function(){finish(0);});
   },
   'go-tools':function(){nav('tools');},
+  'flt-toggle':function(){S.fOpen=!S.fOpen;render(true);},
+  'flt-clear':function(){S.f={country:'',region:'',grape:'',rating:0,tasted:''};saveView();render(true);},
   'lb-open':function(el){S.lb={i:+el.dataset.i||0,zoom:false};try{history.pushState({k:HI,lb:1},'');}catch(e){}render(true);},
   'lb-close':function(el,e){
     /* the dark backdrop closes it; taps on the bar or arrows should not */
@@ -1385,6 +1459,13 @@ app.addEventListener('input',onBind);
 app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
+  else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
+  else if(c&&c.contains('flt')){
+    var k=e.target.dataset.k,v=e.target.value;
+    S.f[k]=k==='rating'?(+v||0):v;
+    if(k==='country'&&S.f.region){var ok=S.wines.some(function(w){return norm(countryOf(w))===norm(S.f.country||countryOf(w))&&regionKey(w.region)===S.f.region;});if(!ok)S.f.region='';}
+    saveView();render(true);
+  }
   else if(c&&c.contains('wphoto-in'))onWinePhoto(e.target);
   else if(c&&c.contains('imp-file')){
     var f=e.target.files&&e.target.files[0];if(!f)return;
