@@ -1321,11 +1321,120 @@ function impHeaders(im){
   for(i=0;i<n;i++)hs.push(im.header?String((im.rows[0][i]==null?'':im.rows[0][i])).trim()||'Column '+(i+1):'Column '+(i+1));
   return hs;
 }
-function impLoad(text){
-  var P=parseDelimited(text);
-  if(P.rows.length<1){toast('That looks empty. Paste or choose a spreadsheet saved as CSV.',6000);return;}
+/* ---- Excel (.xlsx) reader: no libraries. An .xlsx file is a zip of XML files. ---- */
+function xlsxInflate(bytes){
+  return new Promise(function(res,rej){
+    if(typeof DecompressionStream==='undefined'){rej(new Error('nodecomp'));return;}
+    var ds=new DecompressionStream('deflate-raw'),w=ds.writable.getWriter(),r=ds.readable.getReader(),parts=[],total=0;
+    w.write(bytes).then(function(){return w.close();}).catch(rej);
+    (function pump(){r.read().then(function(x){
+      if(x.done){var out=new Uint8Array(total),o=0;parts.forEach(function(c){out.set(c,o);o+=c.length;});res(out);return;}
+      parts.push(x.value);total+=x.value.length;pump();
+    }).catch(rej);})();
+  });
+}
+function xlsxZip(buf){
+  var u=new Uint8Array(buf),dv=new DataView(buf),i,end=-1;
+  for(i=u.length-22;i>=Math.max(0,u.length-65600);i--){if(dv.getUint32(i,true)===0x06054b50){end=i;break;}}
+  if(end<0)throw new Error('notzip');
+  var n=dv.getUint16(end+10,true),p=dv.getUint32(end+16,true),files={},k;
+  for(k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    var method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),off=dv.getUint32(p+42,true);
+    var name=new TextDecoder().decode(u.subarray(p+46,p+46+nl));
+    files[name]={method:method,csize:csize,off:off};
+    p+=46+nl+el+cl;
+  }
+  function read(name){
+    var f=files[name];if(!f)return Promise.resolve(null);
+    var nl=dv.getUint16(f.off+26,true),el=dv.getUint16(f.off+28,true),st=f.off+30+nl+el,data=u.subarray(st,st+f.csize);
+    var done=f.method===0?Promise.resolve(data):xlsxInflate(data);
+    return done.then(function(b){return new TextDecoder().decode(b);});
+  }
+  return {names:Object.keys(files),read:read};
+}
+function xlsxDoc(txt){return new DOMParser().parseFromString(txt,'application/xml');}
+function xlsxCol(ref){var m=/^([A-Z]+)/.exec(ref||''),n=0,i;if(!m)return -1;for(i=0;i<m[1].length;i++)n=n*26+m[1].charCodeAt(i)-64;return n-1;}
+function xlsxIsDateFmt(id,codes){
+  if((id>=14&&id<=22)||(id>=45&&id<=47))return true;
+  var c=codes[id];if(!c)return false;
+  c=c.replace(/"[^"]*"/g,'').replace(/\[[^\]]*\]/g,'').replace(/\\./g,'');
+  return /[dmyhs]/i.test(c);
+}
+function xlsxSerial(n){
+  var ms=Math.round((n-25569)*86400000),d=new Date(ms);
+  if(isNaN(d.getTime()))return String(n);
+  return d.getUTCFullYear()+'-'+('0'+(d.getUTCMonth()+1)).slice(-2)+'-'+('0'+d.getUTCDate()).slice(-2);
+}
+function readXlsx(buf){
+  var z=xlsxZip(buf);
+  return Promise.all([z.read('xl/workbook.xml'),z.read('xl/_rels/workbook.xml.rels'),z.read('xl/sharedStrings.xml'),z.read('xl/styles.xml')]).then(function(r){
+    if(!r[0])throw new Error('notxlsx');
+    var wb=xlsxDoc(r[0]),sheets=[].slice.call(wb.getElementsByTagName('sheet')),paths={};
+    if(r[1])[].slice.call(xlsxDoc(r[1]).getElementsByTagName('Relationship')).forEach(function(x){var t=x.getAttribute('Target')||'';paths[x.getAttribute('Id')]=t.charAt(0)==='/'?t.slice(1):'xl/'+t;});
+    var shared=[];
+    if(r[2])[].slice.call(xlsxDoc(r[2]).getElementsByTagName('si')).forEach(function(si){shared.push([].slice.call(si.getElementsByTagName('t')).map(function(t){return t.textContent;}).join(''));});
+    var codes={},xfs=[];
+    if(r[3]){
+      var sd=xlsxDoc(r[3]);
+      [].slice.call(sd.getElementsByTagName('numFmt')).forEach(function(x){codes[+x.getAttribute('numFmtId')]=x.getAttribute('formatCode');});
+      var cx=sd.getElementsByTagName('cellXfs')[0];
+      if(cx)[].slice.call(cx.getElementsByTagName('xf')).forEach(function(x){xfs.push(+x.getAttribute('numFmtId')||0);});
+    }
+    var targets=sheets.map(function(sh){return paths[sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id')||sh.getAttribute('r:id')];}).filter(Boolean);
+    if(!targets.length)targets=z.names.filter(function(n){return /^xl\/worksheets\/sheet\d+\.xml$/.test(n);}).sort();
+    function parseSheet(txt){
+      var rows=[];
+      [].slice.call(xlsxDoc(txt).getElementsByTagName('row')).forEach(function(row){
+        var out=[];
+        [].slice.call(row.getElementsByTagName('c')).forEach(function(c){
+          var ci=xlsxCol(c.getAttribute('r'));if(ci<0)ci=out.length;
+          var t=c.getAttribute('t'),vEl=c.getElementsByTagName('v')[0],v=vEl?vEl.textContent:'',val='';
+          if(t==='s')val=shared[+v]||'';
+          else if(t==='inlineStr')val=[].slice.call(c.getElementsByTagName('t')).map(function(x){return x.textContent;}).join('');
+          else if(t==='b')val=v==='1'?'TRUE':'FALSE';
+          else if(t==='str'||t==='e')val=v;
+          else if(v!==''){
+            var num=parseFloat(v),sid=+c.getAttribute('s')||0;
+            val=(!isNaN(num)&&xlsxIsDateFmt(xfs[sid]||0,codes))?xlsxSerial(num):String(isNaN(num)?v:+num.toPrecision(12));
+          }
+          while(out.length<ci)out.push('');
+          out[ci]=val;
+        });
+        rows.push(out);
+      });
+      return rows.filter(function(r){return r.some(function(c){return String(c).trim()!=='';});});
+    }
+    var i=0;
+    function next(){
+      if(i>=targets.length)return [];
+      return z.read(targets[i++]).then(function(t){var rows=t?parseSheet(t):[];return rows.length?rows:next();});
+    }
+    return next();
+  });
+}
+function impFile(file){
+  var isX=/\.xlsx$/i.test(file.name||'')||/spreadsheetml/.test(file.type||'');
+  if(/\.xls$/i.test(file.name||'')){toast('Old .xls files are not supported. In Excel choose Save As, then Excel Workbook (.xlsx) or CSV.',9000);return;}
+  var fr=new FileReader();
+  fr.onerror=function(){toast('Could not read that file.');};
+  if(isX){
+    fr.onload=function(){
+      readXlsx(fr.result).then(function(rows){impFromRows(rows);})
+        .catch(function(e){toast(e&&e.message==='nodecomp'?'This browser cannot open Excel files. Save the sheet as CSV instead.':'Could not open that Excel file. Try saving it as CSV.',8000);});
+    };
+    fr.readAsArrayBuffer(file);
+  }else{
+    fr.onload=function(){impLoad(String(fr.result||''));};
+    fr.readAsText(file);
+  }
+}
+function impLoad(text){impFromRows(parseDelimited(text).rows);}
+function impFromRows(allRows){
+  var P={rows:allRows.map(function(r){return r.map(function(c){return c==null?'':String(c);});})};
+  if(P.rows.length<1){toast('That looks empty. Paste or choose a spreadsheet.',6000);return;}
   var truncated=false;
-  if(P.rows.length>501){P.rows=P.rows.slice(0,501);truncated=true;}
+  if(P.rows.length>10001){P.rows=P.rows.slice(0,10001);truncated=true;}
   var im={rows:P.rows,header:true,map:[],truncated:truncated,busy:false};
   im.map=impAutoMap(impHeaders(im));
   im.coll=impGuessColl(im);
@@ -1339,7 +1448,7 @@ function importView(){
   if(!im||!im.rows){
     return '<div class="wrap">'+back+'<h1 class="h2">Import a spreadsheet</h1>'+
       '<p class="muted">Bring in a list you already keep. Your columns can be named and ordered any way you like, and you check the match before anything is saved.</p>'+
-      '<section class="card"><div class="field"><div class="flabel">Choose a file</div><input id="impFile" class="vh imp-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values"><label class="drop" for="impFile"><span class="dtitle">Choose a CSV file</span><span class="dsub">In Excel or Sheets: File, then Save or Download as CSV</span></label></div></section>'+
+      '<section class="card"><div class="field"><div class="flabel">Choose a file</div><input id="impFile" class="vh imp-file" type="file" accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,text/tab-separated-values"><label class="drop" for="impFile"><span class="dtitle">Choose an Excel or CSV file</span><span class="dsub">An Excel .xlsx file works directly. From Sheets: File, Download, then Excel or CSV</span></label></div></section>'+
       '<section class="card"><div class="field"><label class="flabel" for="impText">Or paste rows copied from a spreadsheet</label><textarea id="impText" class="csv" placeholder="Select the cells in your spreadsheet, copy, and paste here. Include the header row."></textarea></div><div class="actions"><button class="btn" data-act="imp-parse">Read pasted rows</button></div></section>'+
       '<p class="muted">Different languages are fine (vino, producteur, año…). Ratings out of 10 or 100 are converted to 5 stars. Photos cannot come from a spreadsheet.</p></div>';
   }
@@ -1361,7 +1470,7 @@ function importView(){
   var can=hasName&&(R.newWines||R.newTastings||R.bottles)&&!im.busy;
   return '<div class="wrap">'+back+'<h1 class="h2">Check the match</h1>'+
     '<p class="muted">'+(im.rows.length-(im.header?1:0))+' rows found. Tell the app what each column holds. Change any that look wrong.</p>'+
-    (im.truncated?'<p class="notice">Only the first 500 rows are read at a time. Import these, then do the rest.</p>':'')+
+    (im.truncated?'<p class="notice">More than 10,000 rows? You drink too much. You have a problem! Only the first 10,000 rows were read. Import these, then delete those rows from your file and import what is left. Importing the same rows twice would count their bottles twice.</p>':'')+
     '<label class="chk"><input type="checkbox" data-act="imp-header"'+(im.header?' checked':'')+'> First row is a header</label>'+
     '<label class="chk"><input type="checkbox" data-act="imp-coll"'+(im.coll?' checked':'')+'> This is my collection: '+(im.map.indexOf('qty')!==-1?'use the bottles column':'count each repeated row as one bottle')+'</label>'+
     '<section class="card"><div class="mlist">'+cols+'</div><div class="actions"><button class="btn" data-act="imp-ai"'+(im.busy?' disabled':'')+'>'+(im.busy?'Matching…':'Ask Claude to match the columns')+'</button></div></section>'+
@@ -1721,7 +1830,7 @@ app.addEventListener('change',function(e){
   else if(c&&c.contains('wphoto-in'))onWinePhoto(e.target);
   else if(c&&c.contains('imp-file')){
     var f=e.target.files&&e.target.files[0];if(!f)return;
-    var fr=new FileReader();fr.onload=function(){impLoad(String(fr.result||''));};fr.onerror=function(){toast('Could not read that file.');};fr.readAsText(f);
+    impFile(f);e.target.value='';
   }else if(c&&c.contains('imp-map')){
     if(!S.imp)return;
     var ci=+e.target.dataset.col,v=e.target.value;
