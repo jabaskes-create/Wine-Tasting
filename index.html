@@ -154,6 +154,15 @@ textarea.csv{font:12px/1.4 var(--font-mono);min-height:120px}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 @media (prefers-reduced-motion:reduce){.bar::after{animation:none;width:100%}}
 
+.mlist{display:flex;flex-direction:column}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.mrow:first-child{border-top:0;padding-top:0}
+.mhead{display:flex;flex-direction:column;min-width:0}
+.mname{font-weight:600;overflow-wrap:anywhere}
+.msamp{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.mprev{margin:8px 0 0;padding-left:18px}
+.chk{display:flex;gap:10px;align-items:center;justify-content:flex-start}
+.chk input{width:22px;height:22px;min-height:0;flex:none;margin:0;padding:0}
 .lrow{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
 .lrow>div{flex:1 1 220px;min-width:0}
 .src{font-size:12px;color:var(--muted)}
@@ -295,14 +304,15 @@ function hay(w){
 }
 /* Words that mean the same thing in different languages, so Italia finds Italy and rosso finds red.
    Written without accents; underscores stand for spaces. */
-var ALIAS_GROUPS=[
-  /* countries */
+var COUNTRY_GROUPS=[
   'italy italia italie italien','spain espana spagna espagne spanien','france francia frankreich','germany germania deutschland alemania allemagne',
   'portugal portogallo','austria osterreich autriche','switzerland svizzera suisse schweiz suiza','greece grecia grece',
   'united_states usa estados_unidos stati_uniti etats_unis','south_africa sudafrica afrique_du_sud','new_zealand nuova_zelanda nueva_zelanda nouvelle_zelande',
-  'chile cile','hungary ungheria hungria ungarn hongrie','croatia croazia croacia','lebanon libano','turkey turchia turquia turquie',
+  'chile cile','hungary ungheria hungria ungarn hongrie','croatia croazia croacia','lebanon libano','turkey turchia turquia turquie'
+].map(function(g){return g.split(' ');});
+var ALIAS_GROUPS=COUNTRY_GROUPS.concat([
   /* wine types */
-  'red rosso tinto rouge rot','white bianco blanco blanc weiss branco','rose rosato rosado','sparkling spumante frizzante espumoso mousseux sekt',
+  'red rosso tinto rouge rot','white bianco blanco blanc weiss branco','rose rosato rosado','sparkling spumante frizzante espumoso mousseux sekt champagne prosecco cava cremant',
   'orange arancione','dessert passito dulce',
   /* regions */
   'tuscany toscana toscane toskana','piedmont piemonte piemont','sicily sicilia sicile sizilien','lombardy lombardia lombardei','apulia puglia pouilles',
@@ -313,7 +323,7 @@ var ALIAS_GROUPS=[
   /* grapes */
   'grenache garnacha','syrah shiraz','mourvedre monastrell mataro','pinot_gris pinot_grigio grauburgunder','pinot_noir pinot_nero spatburgunder',
   'pinot_blanc pinot_bianco weissburgunder','muscat moscato moscatel','trebbiano ugni_blanc','vermentino rolle'
-].map(function(g){return g.split(' ');});
+].map(function(g){return g.split(' ');}));
 var ALIAS={};
 ALIAS_GROUPS.forEach(function(g){g.forEach(function(t){ALIAS[t]=g;});});
 var ALIAS_PHRASES=Object.keys(ALIAS).filter(function(k){return k.indexOf('_')!==-1;});
@@ -464,7 +474,7 @@ function resultsHtml(){
   var ws=filtered();
   if(!ws.length){
     if(S.wines.length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.</p></div>';
-    return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label to add your first bottle.</p></div>';
+    return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all')?'<p class="count-line">Showing '+ws.length+' of '+S.wines.length+'</p>':'';
   return line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
@@ -482,7 +492,7 @@ function listView(){
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="Search name, grape, region, place, taster" autocomplete="off" aria-label="Search your cellar"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
-    '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="download">Download spreadsheet</button><button class="btn btn-ghost" data-act="csv">Copy for spreadsheet</button>'+
+    '<section class="tools"><h2 class="tiny">Tools</h2><div class="trow"><button class="btn btn-ghost" data-act="imp-open">Import spreadsheet</button><button class="btn btn-ghost" data-act="download">Download spreadsheet</button><button class="btn btn-ghost" data-act="csv">Copy for spreadsheet</button>'+
     ((hasEx&&!S.user)?'<button class="btn btn-ghost" data-act="clear-ex">Remove examples</button>':'')+
     (S.user?'<button class="btn btn-ghost" data-act="sign-out">Sign out</button>':'<button class="btn btn-ghost" data-act="reset">'+(S.confirm==='reset'?'Tap again to reset':'Reset demo')+'</button>')+'</div>'+passField+csvPanel+'</section>'+
   '</div>';
@@ -561,6 +571,7 @@ function render(keep){
   if(S.view==='scan')html=scanView();
   else if(S.view==='review'&&S.draft)html=reviewView();
   else if(S.view==='detail')html=detailView();
+  else if(S.view==='import')html=importView();
   else{S.view='list';html=listView();}
   app.innerHTML=html+datalists();
   if(keep)window.scrollTo(0,y);
@@ -732,6 +743,225 @@ function sheetText(sep){
 }
 function csvText(){return sheetText(',');}
 
+
+/* ---- Spreadsheet import ---- */
+var IMP_FIELDS=[
+  ['name','Wine name'],['producer','Producer'],['vintage','Vintage'],['type','Type'],['grapes','Grapes'],['country','Country'],['region','Region'],
+  ['appellation','Appellation'],['abv','Alcohol %'],['volume','Volume'],['wnotes','Notes about the wine'],
+  ['date','Date tasted'],['place','Where tasted'],['taster','Taster'],['rating','Rating'],['price','Price paid'],['tnotes','Tasting notes']
+];
+var IMP_KEYS=IMP_FIELDS.map(function(f){return f[0];});
+var IMP_LABEL={};IMP_FIELDS.forEach(function(f){IMP_LABEL[f[0]]=f[1];});
+/* Header words people use, in several languages. Spaces and accents are ignored when matching. */
+var IMP_SYN={
+  name:'wine winename name nome nomedelvino vino nombre nom cuvee label title product wines',
+  producer:'producer winery producteur produttore cantina bodega estate domaine maker house chateau winemaker azienda weingut vigneron',
+  vintage:'vintage year anno annata ano millesime jahrgang yr vint',
+  type:'type style colour color tipo couleur kind category winetype',
+  grapes:'grapes grape variety varietal varieties vitigno uvaggio uva cepage cepas uvas rebsorte blend',
+  country:'country nation paese pais pays land',
+  region:'region area regione zona regiao',
+  appellation:'appellation doc docg aoc denominazione designation denominacion classification quality',
+  abv:'abv alcohol alc gradazione gradi abvpercent alcoholpercent alcoholbyvolume vol grado degre alkohol',
+  volume:'volume size bottlesize ml cl formato capacity volumen contenance volumeml sizeml',
+  wnotes:'winenotes description about details winedescription',
+  date:'date tasted datetasted tastingdate drankon data fecha datum whenidrank dateadded',
+  place:'place where location restaurant venue wheretried wheretasted luogo lugar bar',
+  taster:'taster who by drankwith person with rater reviewer',
+  rating:'rating score stars rate points voto punteggio puntuacion grade',
+  price:'price cost paid pricepaid prezzo precio prix preis',
+  tnotes:'tastingnotes tasting notes note comments comment review impressions nota notas notizen commento commenti comentario comentarios commentaire commentaires bemerkungen anmerkungen appunti remarks memo thoughts'
+};
+function impKey(s){return norm(s).replace(/[^a-z0-9]/g,'');}
+function parseDelimited(text){
+  text=String(text||'').replace(/^﻿/,'');
+  var first=(text.split(/\r?\n/)[0]||'').replace(/"[^"]*"/g,''),best=',',bc=-1;
+  [',','\t',';','|'].forEach(function(d){var c=first.split(d).length-1;if(c>bc){bc=c;best=d;}});
+  var rows=[],row=[],cell='',q=false,i,n=text.length,ch;
+  for(i=0;i<n;i++){
+    ch=text.charAt(i);
+    if(q){
+      if(ch==='"'){if(text.charAt(i+1)==='"'){cell+='"';i++;}else q=false;}
+      else cell+=ch;
+    }else if(ch==='"'&&cell==='')q=true;
+    else if(ch===best){row.push(cell);cell='';}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text.charAt(i+1)==='\n')i++;row.push(cell);cell='';rows.push(row);row=[];}
+    else cell+=ch;
+  }
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  rows=rows.filter(function(r){return r.some(function(c){return String(c).trim()!=='';});});
+  return {rows:rows,delim:best};
+}
+function impAutoMap(headers){
+  var cands=[];
+  headers.forEach(function(h,ci){
+    var k=impKey(h);if(!k)return;
+    IMP_KEYS.forEach(function(f){
+      IMP_SYN[f].split(' ').forEach(function(w){
+        if(k===w)cands.push([3,ci,f]);
+        else if(w.length>=4&&k.indexOf(w)!==-1)cands.push([2,ci,f]);
+      });
+    });
+  });
+  cands.sort(function(a,b){return b[0]-a[0];});
+  var map=headers.map(function(){return '';}),usedF={};
+  cands.forEach(function(c){if(!map[c[1]]&&!usedF[c[2]]){map[c[1]]=c[2];usedF[c[2]]=1;}});
+  return map;
+}
+function impType(v){
+  var ws=norm(v).split(/[^a-z]+/).filter(Boolean),i,g,m={red:'red',white:'white',rose:'rosé',sparkling:'sparkling',orange:'orange',dessert:'dessert'};
+  for(i=0;i<ws.length;i++){g=ALIAS[ws[i]];if(g&&m[g[0]])return m[g[0]];}
+  return '';
+}
+function impCountry(v){
+  var t=String(v||'').trim();if(!t)return '';
+  var k=norm(t).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),i;
+  for(i=0;i<COUNTRY_GROUPS.length;i++){if(COUNTRY_GROUPS[i].indexOf(k)!==-1)return COUNTRY_GROUPS[i][0].replace(/_/g,' ').replace(/\b[a-z]/g,function(c){return c.toUpperCase();});}
+  return t;
+}
+function impVintage(v){
+  var t=String(v||'').trim();
+  if(/^(nv|n\/v|mv|n\.v\.|non[- ]?vintage|multi[- ]?vintage|senza annata|sin cosecha)$/i.test(t))return 'NV';
+  var m=/\b(19\d{2}|20\d{2})\b/.exec(t);return m?m[1]:'';
+}
+function impAbv(v){
+  var m=/(\d{1,2}(?:[.,]\d{1,3})?)/.exec(String(v||''));if(!m)return '';
+  var n=parseFloat(m[1].replace(',','.'));
+  if(n>0&&n<1&&String(v).indexOf('%')===-1)n=Math.round(n*1000)/10; /* 0.135 stored as a spreadsheet percentage */
+  return n>0&&n<=25?String(n):'';
+}
+function impVolume(v){
+  var m=/(\d+(?:[.,]\d+)?)\s*(ml|cl|l|lt|ltr|liter|litre|litro|litri)?\b/i.exec(String(v||''));if(!m)return '';
+  var n=parseFloat(m[1].replace(',','.')),u=(m[2]||'').toLowerCase();
+  if(u==='cl')n*=10;else if(u&&u!=='ml')n*=1000;else if(!u&&n<10)n*=1000;
+  n=Math.round(n);return n>=50&&n<=6000?String(n):'';
+}
+function impRating(v){
+  var t=String(v||'').trim();if(!t)return 0;
+  var m=/(\d+(?:[.,]\d+)?)(?:\s*\/\s*(\d+))?/.exec(t);if(!m)return 0;
+  var n=parseFloat(m[1].replace(',','.')),max=m[2]?parseFloat(m[2]):(n<=5?5:(n<=10?10:(n<=20?20:100)));
+  if(!n||!max)return 0;
+  var r=Math.round(n/max*5);return Math.max(1,Math.min(5,r));
+}
+function ymd(y,m,d){
+  if(m<1||m>12||d<1||d>31||y<1900||y>2100)return '';
+  return y+'-'+(m<10?'0':'')+m+'-'+(d<10?'0':'')+d;
+}
+function impDate(v,order){
+  var t=String(v||'').trim(),m,a,b,y,d;
+  if(!t)return '';
+  if((m=/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/.exec(t)))return ymd(+m[1],+m[2],+m[3]);
+  if((m=/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/.exec(t))){
+    a=+m[1];b=+m[2];y=+m[3];if(y<100)y+=2000;
+    var us=order?order==='md':/^en(-us)?$/i.test(navigator.language||'');
+    if(a>12)return ymd(y,b,a);
+    if(b>12)return ymd(y,a,b);
+    return us?ymd(y,a,b):ymd(y,b,a);
+  }
+  if(/^\d{5}$/.test(t)){d=new Date(Math.round((+t-25569)*86400000));return ymd(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate());}
+  d=new Date(t);
+  return isNaN(d.getTime())?'':ymd(d.getFullYear(),d.getMonth()+1,d.getDate());
+}
+/* Looks at a whole date column: one value like 15/12/2025 settles whether the column is day/month or month/day. */
+function impDateOrder(values){
+  var dm=false,md=false;
+  values.forEach(function(v){
+    var m=/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/.exec(String(v||'').trim());
+    if(!m)return;
+    if(+m[1]>12)dm=true;
+    if(+m[2]>12)md=true;
+  });
+  return dm&&!md?'dm':(md&&!dm?'md':'');
+}
+function impKeyOf(w){var k=function(x){return norm(x).replace(/[^a-z0-9]/g,'');};return k(w.name)+'|'+k(w.producer)+'|'+k(w.vintage);}
+/* Turns the parsed rows plus the column choices into wines. Nothing is saved here. */
+function buildImport(im){
+  var rows=im.rows.slice(im.header?1:0),map=im.map,groups={},order=[],noName=0;
+  var dci=map.indexOf('date'),dorder=dci===-1?'':impDateOrder(rows.map(function(r){return r[dci];}));
+  rows.forEach(function(r){
+    var v={};IMP_KEYS.forEach(function(k){v[k]='';});
+    map.forEach(function(f,ci){if(f&&!v[f])v[f]=String(r[ci]==null?'':r[ci]).replace(/\s+/g,' ').trim();});
+    if(!v.name){noName++;return;}
+    var w={name:v.name.slice(0,120),producer:v.producer.slice(0,120),vintage:impVintage(v.vintage),type:impType(v.type||''),grapes:v.grapes.slice(0,160),
+      country:impCountry(v.country).slice(0,60),region:v.region.slice(0,80),appellation:v.appellation.slice(0,120),abv:impAbv(v.abv),volume:impVolume(v.volume),notes:v.wnotes.slice(0,280)};
+    var t={date:impDate(v.date,dorder),where:v.place.slice(0,120),taster:v.taster.slice(0,60),rating:impRating(v.rating),price:v.price.slice(0,40),notes:v.tnotes.slice(0,280)};
+    var has=!!(t.date||t.where||t.taster||t.rating||t.price||t.notes);
+    var key=impKeyOf(w),g=groups[key];
+    if(!g){g=groups[key]={wine:w,tastings:[]};order.push(key);}
+    else FIELD_KEYS.concat(['notes']).forEach(function(k){if(!g.wine[k]&&w[k])g.wine[k]=w[k];});
+    if(has)g.tastings.push(t);
+  });
+  var existing={};S.wines.forEach(function(w){existing[impKeyOf(w)]=w;});
+  var fresh=[],dupes=0,newT=0;
+  order.forEach(function(key){
+    var g=groups[key],ex=existing[key],tk=function(t){return [t.date,t.where,t.taster,t.rating,t.notes].join('|');};
+    if(ex){
+      dupes++;
+      var have={};ex.tastings.forEach(function(t){have[tk(t)]=1;});
+      var add=g.tastings.filter(function(t){return !have[tk(t)];});
+      newT+=add.length;
+      if(add.length)fresh.push({existing:ex,tastings:add});
+    }else{newT+=g.tastings.length;fresh.push({wine:g.wine,tastings:g.tastings});}
+  });
+  return {items:fresh,newWines:fresh.filter(function(x){return x.wine;}).length,dupes:dupes,newTastings:newT,noName:noName,rows:rows.length};
+}
+function impSample(im,ci){
+  var rows=im.rows.slice(im.header?1:0),i;
+  for(i=0;i<rows.length&&i<6;i++){var c=String(rows[i][ci]==null?'':rows[i][ci]).trim();if(c)return c.length>28?c.slice(0,27)+'…':c;}
+  return '';
+}
+function impHeaders(im){
+  var n=0;im.rows.slice(0,50).forEach(function(r){if(r.length>n)n=r.length;});
+  var hs=[],i;
+  for(i=0;i<n;i++)hs.push(im.header?String((im.rows[0][i]==null?'':im.rows[0][i])).trim()||'Column '+(i+1):'Column '+(i+1));
+  return hs;
+}
+function impLoad(text){
+  var P=parseDelimited(text);
+  if(P.rows.length<1){toast('That looks empty. Paste or choose a spreadsheet saved as CSV.',6000);return;}
+  var truncated=false;
+  if(P.rows.length>501){P.rows=P.rows.slice(0,501);truncated=true;}
+  var im={rows:P.rows,header:true,map:[],truncated:truncated,busy:false};
+  im.map=impAutoMap(impHeaders(im));
+  S.imp=im;
+  render(false);window.scrollTo(0,0);
+  if(im.map.indexOf('name')===-1)ACT['imp-ai']();
+}
+function importView(){
+  var im=S.imp;
+  var back='<button class="back" data-act="imp-cancel">← Cellar</button>';
+  if(!im||!im.rows){
+    return '<div class="wrap">'+back+'<h1 class="h2">Import a spreadsheet</h1>'+
+      '<p class="muted">Bring in a list you already keep. Your columns can be named and ordered any way you like, and you check the match before anything is saved.</p>'+
+      '<section class="card"><div class="field"><div class="flabel">Choose a file</div><input id="impFile" class="vh imp-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values"><label class="drop" for="impFile"><span class="dtitle">Choose a CSV file</span><span class="dsub">In Excel or Sheets: File, then Save or Download as CSV</span></label></div></section>'+
+      '<section class="card"><div class="field"><label class="flabel" for="impText">Or paste rows copied from a spreadsheet</label><textarea id="impText" class="csv" placeholder="Select the cells in your spreadsheet, copy, and paste here. Include the header row."></textarea></div><div class="actions"><button class="btn" data-act="imp-parse">Read pasted rows</button></div></section>'+
+      '<p class="muted">Different languages are fine (vino, producteur, año…). Ratings out of 10 or 100 are converted to 5 stars. Photos cannot come from a spreadsheet.</p></div>';
+  }
+  var hs=impHeaders(im),R=buildImport(im),hasName=im.map.indexOf('name')!==-1;
+  var opts=function(cur){return '<option value="">Ignore this column</option>'+IMP_FIELDS.map(function(f){return '<option value="'+f[0]+'"'+(cur===f[0]?' selected':'')+'>'+f[1]+'</option>';}).join('');};
+  var cols=hs.map(function(h,ci){
+    return '<div class="mrow"><div class="mhead"><span class="mname">'+esc(h)+'</span><span class="msamp">'+esc(impSample(im,ci))+'</span></div>'+
+      '<select class="imp-map" data-col="'+ci+'" aria-label="What is column '+esc(h)+'?">'+opts(im.map[ci])+'</select></div>';
+  }).join('');
+  var sample=R.items.filter(function(x){return x.wine;}).slice(0,3).map(function(x){
+    var w=x.wine;return '<li>'+esc([w.producer,w.name,w.vintage].filter(Boolean).join(' · '))+'<span class="msamp"> '+esc([w.region,w.country].filter(Boolean).join(', '))+(x.tastings.length?' · '+x.tastings.length+(x.tastings.length===1?' tasting':' tastings'):'')+'</span></li>';
+  }).join('');
+  var parts=[];
+  parts.push('<strong>'+R.newWines+(R.newWines===1?' new wine':' new wines')+'</strong>');
+  if(R.newTastings)parts.push(R.newTastings+(R.newTastings===1?' tasting':' tastings'));
+  if(R.dupes)parts.push(R.dupes+' already in your cellar (not copied again)');
+  if(R.noName)parts.push(R.noName+(R.noName===1?' row':' rows')+' skipped for having no wine name');
+  var can=hasName&&(R.newWines||R.newTastings)&&!im.busy;
+  return '<div class="wrap">'+back+'<h1 class="h2">Check the match</h1>'+
+    '<p class="muted">'+(im.rows.length-(im.header?1:0))+' rows found. Tell the app what each column holds. Change any that look wrong.</p>'+
+    (im.truncated?'<p class="notice">Only the first 500 rows are read at a time. Import these, then do the rest.</p>':'')+
+    '<label class="chk"><input type="checkbox" data-act="imp-header"'+(im.header?' checked':'')+'> First row is a header</label>'+
+    '<section class="card"><div class="mlist">'+cols+'</div><div class="actions"><button class="btn" data-act="imp-ai"'+(im.busy?' disabled':'')+'>'+(im.busy?'Matching…':'Ask Claude to match the columns')+'</button></div></section>'+
+    (hasName?'':'<p class="notice" role="alert">Choose which column holds the wine name. Nothing can be imported without it.</p>')+
+    '<section class="card"><h2 class="h3">What will happen</h2><p>'+parts.join(' · ')+'</p>'+(sample?'<ul class="mprev">'+sample+'</ul>':'')+'</section>'+
+    '<div class="actions"><button class="btn btn-primary wide" data-act="imp-go"'+(can?'':' disabled')+'>Import</button></div></div>';
+}
+
 /* ---- Actions ---- */
 var ACT={
   'go-list':function(){S.tok++;S.scanning=false;S.draft=null;clearPhotos();S.dup=null;S.addOpen=false;nav('list');},
@@ -835,6 +1065,50 @@ var ACT={
       toast('Spreadsheet file saved. Open it in Excel or Google Sheets.');
     }catch(e){S.csv=csvText();render(true);}
   },
+  'imp-open':function(){S.imp=null;nav('import');},
+  'imp-cancel':function(){S.imp=null;nav('list');},
+  'imp-parse':function(){var el=document.getElementById('impText');impLoad(el?el.value:'');},
+  'imp-header':function(){
+    var im=S.imp;if(!im)return;
+    im.header=!im.header;im.map=impAutoMap(impHeaders(im));render(true);
+  },
+  'imp-ai':function(){
+    var im=S.imp;if(!im||im.busy)return;
+    im.busy=true;render(true);
+    var hs=impHeaders(im),rows=im.rows.slice(im.header?1:0,(im.header?1:0)+3).map(function(r){return hs.map(function(h,i){return String(r[i]==null?'':r[i]).slice(0,60);});});
+    var headers={'Content-Type':'application/json'};
+    if(S.pass)headers['x-passcode']=S.pass;
+    idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/mapcols',{method:'POST',headers:headers,body:JSON.stringify({headers:hs.map(function(h){return h.slice(0,60);}),rows:rows})});})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
+      .then(function(x){
+        im.busy=false;
+        if(S.imp!==im)return;
+        if(x.status===200&&x.j&&Array.isArray(x.j.mapping)){
+          var used={};
+          im.map=hs.map(function(h,i){var f=x.j.mapping[i];if(IMP_KEYS.indexOf(f)!==-1&&!used[f]){used[f]=1;return f;}return '';});
+          toast('Columns matched. Check them below.');
+        }else if(x.status===401||x.status===403){toast('Sign in with an approved account to use Claude for this.',7000);}
+        else toast('Claude could not match the columns. Choose them yourself below.',7000);
+        render(true);
+      })
+      .catch(function(){im.busy=false;if(S.imp===im){toast('Could not reach the matching service. Choose the columns yourself.',7000);render(true);}});
+  },
+  'imp-go':function(){
+    var im=S.imp;if(!im||im.map.indexOf('name')===-1)return;
+    var R=buildImport(im),now=Date.now(),added=0;
+    R.items.forEach(function(it,i){
+      if(it.existing){it.tastings.forEach(function(t){it.existing.tastings.push(Object.assign({id:uid()},t));});return;}
+      var w=it.wine,src={};
+      FIELD_KEYS.forEach(function(k){src[k]=w[k]?'manual':'none';});
+      var typed=w.type;w.type=typed||'red';if(!typed)src.type='none';
+      w.id=uid();w.src=src;w.photos=[];w.sampleKey='';w.research=null;w.imported=true;w.added=now-i;
+      w.tastings=it.tastings.map(function(t){return Object.assign({id:uid()},t);});
+      S.wines.unshift(w);added++;
+    });
+    persist();S.imp=null;S.q='';S.type='all';
+    toast('Imported '+added+(added===1?' wine':' wines')+(R.newTastings?' and '+R.newTastings+(R.newTastings===1?' tasting':' tastings'):'')+'.',6000);
+    nav('list');
+  },
   'clear-ex':function(){S.wines=S.wines.filter(function(w){return !w.example;});persist();toast('Examples removed.');render(true);},
   'sign-out':function(){if(C.auth)C.m.auth.signOut(C.auth);},
   'auth-toggle':function(){S.a.mode=S.a.mode==='in'?'up':'in';S.a.err='';S.a.info='';render(false);},
@@ -904,8 +1178,17 @@ function onBind(e){
 }
 app.addEventListener('input',onBind);
 app.addEventListener('change',function(e){
-  if(e.target.classList&&e.target.classList.contains('photo-in'))onPhoto(e.target);
-  else onBind(e);
+  var c=e.target.classList;
+  if(c&&c.contains('photo-in'))onPhoto(e.target);
+  else if(c&&c.contains('imp-file')){
+    var f=e.target.files&&e.target.files[0];if(!f)return;
+    var fr=new FileReader();fr.onload=function(){impLoad(String(fr.result||''));};fr.onerror=function(){toast('Could not read that file.');};fr.readAsText(f);
+  }else if(c&&c.contains('imp-map')){
+    if(!S.imp)return;
+    var ci=+e.target.dataset.col,v=e.target.value;
+    if(v)S.imp.map=S.imp.map.map(function(f){return f===v?'':f;});
+    S.imp.map[ci]=v;render(true);
+  }else onBind(e);
 });
 
 /* ---- Accounts and cloud cellar ---- */
