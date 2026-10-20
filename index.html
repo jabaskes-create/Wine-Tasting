@@ -646,7 +646,44 @@ function render(keep){
   app.innerHTML=html+datalists();
   if(keep)window.scrollTo(0,y);
 }
-function nav(v){S.view=v;S.confirm='';S.lb=null;render(false);window.scrollTo(0,0);}
+/* ---- Back button ----
+   Every screen change is recorded in the browser history, so the phone's Back button steps back through the app
+   instead of leaving it. VS lists the screen at each history position, HI is the current position. */
+var VS=['list'],HI=0,TRANSIENT={scan:1,review:1};
+try{history.replaceState({k:0},'');}catch(e){}
+function histReset(){VS=['list'];HI=0;try{history.replaceState({k:0},'');}catch(e){}}
+function leaveClean(){S.tok++;S.scanning=false;S.draft=null;clearPhotos();S.dup=null;S.addOpen=false;S.imp=null;}
+function nav(v){
+  var cur=S.view;
+  S.confirm='';S.lb=null;
+  try{
+    if(v==='list'&&HI>0){var n=HI;HI=0;VS=['list'];history.go(-n);}
+    else if(HI>0&&VS[HI-1]===v){HI--;VS.length=HI+1;history.back();}
+    else if(v!==cur){
+      if(TRANSIENT[cur]&&HI>0){VS[HI]=v;history.replaceState({k:HI},'');}
+      else{HI++;VS.length=HI;VS[HI]=v;history.pushState({k:HI},'');}
+    }
+  }catch(e){}
+  S.view=v;render(false);window.scrollTo(0,0);
+}
+function closeLb(){
+  if(history.state&&history.state.lb){history.back();return;}
+  S.lb=null;S.confirm='';render(true);
+}
+window.addEventListener('popstate',function(e){
+  var st=e.state||{k:0};
+  if(S.lb){if(!st.lb){S.lb=null;S.confirm='';render(true);}return;}
+  if(st.lb)return;
+  HI=st.k||0;
+  var v=VS[HI];
+  if(!v){HI=0;v='list';}
+  if(v==='detail'&&!getSel())v='list';
+  if(v==='review'&&!S.draft)v='list';
+  if(v==='import'&&!S.imp)v='list';
+  if(v===S.view)return;
+  if(TRANSIENT[S.view]||S.view==='import'||v==='list')leaveClean();
+  S.view=v;S.confirm='';render(false);window.scrollTo(0,0);
+});
 
 /* ---- Photos and the stubbed scan ---- */
 function shrink(file,max,q){
@@ -1207,11 +1244,11 @@ var ACT={
       .catch(function(){finish(0);});
   },
   'go-tools':function(){nav('tools');},
-  'lb-open':function(el){S.lb={i:+el.dataset.i||0,zoom:false};render(true);},
+  'lb-open':function(el){S.lb={i:+el.dataset.i||0,zoom:false};try{history.pushState({k:HI,lb:1},'');}catch(e){}render(true);},
   'lb-close':function(el,e){
     /* the dark backdrop closes it; taps on the bar or arrows should not */
     if(el.classList.contains('lb')&&e&&e.target!==el&&!e.target.classList.contains('lbbody'))return;
-    S.lb=null;S.confirm='';render(true);
+    closeLb();
   },
   'lb-zoom':function(){if(S.lb){S.lb.zoom=!S.lb.zoom;render(true);}},
   'lb-prev':function(){var w=getSel();if(!S.lb||!w)return;S.lb.i=(S.lb.i+w.photos.length-1)%w.photos.length;S.lb.zoom=false;render(true);},
@@ -1220,8 +1257,8 @@ var ACT={
     var w=getSel();if(!S.lb||!w)return;
     if(S.confirm!=='lbdel'){S.confirm='lbdel';render(true);return;}
     w.photos.splice(S.lb.i,1);S.confirm='';persist();
-    if(!w.photos.length)S.lb=null;else S.lb.i=Math.min(S.lb.i,w.photos.length-1);
-    toast('Photo removed.');render(true);
+    toast('Photo removed.');
+    if(!w.photos.length){closeLb();render(true);}else{S.lb.i=Math.min(S.lb.i,w.photos.length-1);render(true);}
   },
   'del-imported':function(){
     var n=S.wines.filter(function(w){return w.imported;}).length;
@@ -1483,7 +1520,7 @@ function localLeftovers(){
 }
 function onUser(u){
   if(!u){
-    C.on=false;S.user=null;S.wines=[];S.sel=null;S.draft=null;S.importLocal=null;C.snap={};S.view='list';S.q='';S.type='all';
+    C.on=false;S.user=null;S.wines=[];S.sel=null;S.draft=null;S.importLocal=null;C.snap={};S.view='list';histReset();S.q='';S.type='all';
     S.a.pw='';S.cloud='auth';render(false);return;
   }
   S.user=u;S.cloud='loading';render(false);
@@ -1492,7 +1529,7 @@ function onUser(u){
     var left=localLeftovers();
     S.importLocal=(left&&!S.wines.length)?left:null;
     if(left&&S.wines.length)importDone();
-    S.cloud='ready';S.view='list';render(false);window.scrollTo(0,0);
+    S.cloud='ready';S.view='list';histReset();render(false);window.scrollTo(0,0);
     notifyJoin(u);
   }).catch(function(e){
     C.on=false;S.cloud='error';
