@@ -94,6 +94,10 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .searchbar input{padding:12px 14px}
 #results{width:100%;padding-left:0;padding-right:0;box-sizing:border-box}
 #results>*{width:100%;box-sizing:border-box}
+.mapbox{position:relative;width:100%;height:340px;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:#d9e2e8}
+.mapgrid{position:absolute;left:50%;top:50%}
+.mtile{position:absolute;display:block;max-width:none}
+.mappin{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}
 .stiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px}
 .card .stile{background:var(--field)}
@@ -759,7 +763,7 @@ function detailView(){
     '<div><p class="eyebrow">'+dot(w.type)+'<span>'+TYPE_LABEL[w.type]+(w.example?' · Example':'')+(isWant(w)?' · Want to try':'')+(flagOf(w.country)?' · '+flagOf(w.country)+' '+esc(impCountry(w.country)):'')+'</span></p>'+
     '<h1 class="dname">'+esc(w.name)+'</h1><p class="dsub">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</p>'+
     (avg?'<p class="davg">'+starsShow(Math.round(avg))+'<span>'+avg.toFixed(1)+' average from '+rated+(rated===1?' rating':' ratings')+'</span></p>':'')+'</div></header>'+
-    '<section class="card"><h2 class="h3">Details</h2><dl class="facts">'+rows+'</dl></section>'+
+    '<section class="card"><h2 class="h3">Details</h2><dl class="facts">'+rows+'</dl>'+(mapFor(w)?'<div class="trow" style="margin-top:10px"><button class="btn" data-act="show-map">Show on map</button></div>':'')+'</section>'+
     photosCard(w)+
     (isWant(w)?'':'<section class="card"><div class="lrow"><div><h2 class="h3">Collection</h2><p class="muted">'+(qtyOf(w)?bottlesText(qtyOf(w))+' on hand.':'None on hand.')+'</p></div><div class="trow"><button class="btn" data-act="qty-dec" aria-label="Remove one bottle"'+(qtyOf(w)?'':' disabled')+'>−</button><button class="btn" data-act="qty-inc" aria-label="Add one bottle">+</button></div></div>'+(qtyOf(w)?'<div class="actions"><button class="btn btn-primary wide" data-act="drink-this">Drink a bottle</button></div>':'')+'</section>')+
     (isWant(w)?'<section class="card"><div class="lrow"><div><h2 class="h3">On your Want to try list</h2><p class="muted">'+(w.seen?'Seen: '+esc(w.seen)+'. ':'')+'Adding a tasting moves it to Tasted.</p></div><button class="btn btn-primary" data-act="to-cellar">Move to Tasted</button></div></section>':'')+
@@ -782,6 +786,7 @@ function render(keep){
   else if(S.view==='menu'&&S.menu)html=menuView();
   else if(S.view==='drink'&&S.drink)html=drinkView();
   else if(S.view==='stats')html=statsView();
+  else if(S.view==='map'&&S.map)html=mapView();
   else if(S.view==='import')html=importView();
   else if(S.view==='tools')html=toolsView();
   else{S.view='list';html=listView();}
@@ -1052,6 +1057,57 @@ function drinkView(){
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Drink a bottle</h1>'+
     (D.miss&&!w?'<p class="notice" role="status">Could not find “'+esc(D.miss)+'” in your collection. Pick it from the list below.</p>':'')+top+
     '<section class="card"><h2 class="h3">'+(w?'Not this wine?':'Choose from your collection')+'</h2><div class="searchbar" style="margin-top:8px"><input id="dq" type="search" data-dsearch value="'+esc(D.q)+'" placeholder="Search your collection" autocomplete="off" aria-label="Search your collection"></div><div id="dresults" style="margin-top:8px">'+drinkListHtml()+'</div></section></div>';
+}
+
+/* ---- Map: where a wine comes from ---- */
+var GEO_RAW="tuscany|43.4|11.1|8;toscana|43.4|11.1|8;chianti|43.55|11.3|9;chianti classico|43.5|11.3|9;brunello di montalcino|43.05|11.49|10;montalcino|43.05|11.49|10;montepulciano|43.1|11.78|10;vino nobile di montepulciano|43.1|11.78|10;bolgheri|43.22|10.6|10;maremma|42.7|11.2|9;piedmont|44.9|8.0|8;piemonte|44.9|8.0|8;barolo|44.61|7.94|10;barbaresco|44.73|8.08|10;langhe|44.6|8.05|9;roero|44.8|7.95|10;asti|44.9|8.2|10;gavi|44.69|8.81|10;barbera d alba|44.7|8.03|10;dolcetto d alba|44.65|8.02|10;veneto|45.6|11.9|8;valpolicella|45.55|10.9|10;amarone|45.55|10.9|10;soave|45.42|11.25|10;prosecco|45.9|12.2|9;conegliano|45.89|12.3|10;valdobbiadene|45.9|12.0|10;friuli|46.0|13.1|8;collio|45.98|13.55|10;sicily|37.6|14.0|7;sicilia|37.6|14.0|7;etna|37.75|15.0|10;marsala|37.8|12.43|10;sardinia|40.0|9.0|7;sardegna|40.0|9.0|7;cannonau|40.2|9.4|9;puglia|40.9|16.8|7;apulia|40.9|16.8|7;salento|40.25|18.1|9;campania|40.9|14.8|8;taurasi|41.0|15.0|10;irpinia|40.95|15.0|9;fiano di avellino|40.95|14.9|10;basilicata|40.5|16.1|8;abruzzo|42.2|13.9|8;montepulciano d abruzzo|42.3|14.1|8;marche|43.4|13.1|8;verdicchio|43.5|13.0|9;rosso conero|43.5|13.6|10;umbria|42.9|12.5|8;montefalco|42.9|12.65|10;orvieto|42.72|12.11|10;lazio|41.9|12.8|8;frascati|41.8|12.68|10;emilia romagna|44.5|11.0|8;lambrusco|44.65|10.9|9;romagna|44.3|12.0|9;lombardy|45.6|9.9|8;lombardia|45.6|9.9|8;franciacorta|45.6|10.0|10;valtellina|46.15|9.9|10;oltrepo pavese|44.9|9.2|10;trentino|46.1|11.1|8;alto adige|46.6|11.4|9;sudtirol|46.6|11.4|9;liguria|44.3|8.6|8;cinque terre|44.12|9.7|11;dolceacqua|43.85|7.62|11;rossese di dolceacqua|43.85|7.62|11;riviera ligure di ponente|43.95|8.0|9;valle d aosta|45.73|7.35|9;aosta|45.73|7.35|9;molise|41.6|14.6|9;calabria|39.0|16.5|8;rioja|42.4|-2.5|9;rioja alta|42.4|-2.8|10;rioja alavesa|42.55|-2.6|10;ribera del duero|41.65|-3.7|9;rias baixas|42.4|-8.65|9;rias biaxas|42.4|-8.65|9;priorat|41.2|0.8|10;penedes|41.4|1.7|10;cava|41.4|1.7|9;rueda|41.4|-4.9|10;toro|41.5|-5.4|10;bierzo|42.6|-6.6|10;navarra|42.5|-1.7|9;jumilla|38.5|-1.3|10;la mancha|39.2|-2.9|8;valdepenas|38.76|-3.4|10;jerez|36.7|-6.1|10;sherry|36.7|-6.1|9;montilla moriles|37.5|-4.6|10;somontano|42.1|0.1|10;calatayud|41.35|-1.64|10;campo de borja|41.8|-1.5|10;utiel requena|39.5|-1.2|10;alicante|38.5|-0.5|9;yecla|38.6|-1.1|10;ribeiro|42.3|-8.1|10;valdeorras|42.4|-7.1|10;canary islands|28.3|-15.9|7;canarias|28.3|-15.9|7;lanzarote|29.0|-13.6|9;tenerife|28.3|-16.55|9;la palma|28.7|-17.85|10;gran canaria|27.95|-15.6|10;txakoli|43.3|-2.2|10;getariako|43.3|-2.2|10;mallorca|39.6|2.9|9;binissalem|39.68|2.84|11;catalonia|41.7|1.7|8;cataluna|41.7|1.7|8;galicia|42.7|-8.0|8;andalusia|37.5|-4.7|7;castilla y leon|41.7|-4.7|7;castilla la mancha|39.5|-3.0|7;extremadura|39.2|-6.2|8;bordeaux|44.85|-0.6|9;medoc|45.2|-0.8|10;haut medoc|45.1|-0.8|10;margaux|45.04|-0.67|11;pauillac|45.2|-0.75|11;saint julien|45.15|-0.75|11;saint estephe|45.26|-0.77|11;pessac leognan|44.75|-0.6|11;graves|44.6|-0.4|10;sauternes|44.54|-0.35|11;saint emilion|44.89|-0.15|11;pomerol|44.93|-0.2|11;entre deux mers|44.75|-0.2|10;burgundy|47.0|4.8|8;bourgogne|47.0|4.8|8;chablis|47.81|3.8|11;cote d or|47.2|4.9|9;cote de nuits|47.2|4.95|10;cote de beaune|47.0|4.85|10;meursault|46.98|4.77|12;puligny montrachet|46.95|4.75|12;chassagne montrachet|46.93|4.74|12;gevrey chambertin|47.23|4.97|12;nuits saint georges|47.14|4.95|12;pommard|46.99|4.79|12;volnay|46.99|4.77|12;beaujolais|46.1|4.6|9;morgon|46.12|4.68|11;fleurie|46.19|4.68|11;brouilly|46.15|4.63|11;macon|46.3|4.83|10;pouilly fuisse|46.3|4.73|11;champagne|49.0|4.0|8;alsace|48.25|7.4|8;loire|47.3|0.0|7;sancerre|47.33|2.84|10;pouilly fume|47.28|2.95|10;vouvray|47.41|0.8|10;muscadet|47.2|-1.3|10;chinon|47.16|0.24|10;saumur|47.26|-0.08|10;anjou|47.4|-0.5|9;rhone|44.5|4.8|7;chateauneuf du pape|44.06|4.83|11;hermitage|45.07|4.84|11;cote rotie|45.49|4.78|11;crozes hermitage|45.08|4.85|10;gigondas|44.17|5.0|11;vacqueyras|44.16|5.0|11;provence|43.5|6.2|8;bandol|43.14|5.75|10;cassis|43.21|5.54|11;languedoc|43.5|3.2|8;roussillon|42.65|2.8|9;corbieres|43.1|2.7|10;minervois|43.35|2.75|10;faugeres|43.55|3.15|11;jura|46.7|5.7|9;savoie|45.6|6.2|9;cahors|44.45|1.45|10;madiran|43.5|-0.05|10;bergerac|44.85|0.5|10;corsica|42.1|9.1|8;douro|41.15|-7.6|9;porto|41.15|-8.6|10;vinho verde|41.6|-8.4|9;dao|40.5|-7.9|9;alentejo|38.5|-7.9|8;bairrada|40.4|-8.5|10;madeira|32.75|-17.0|9;setubal|38.5|-8.9|10;lisboa|39.0|-9.2|9;tejo|39.2|-8.3|9;mosel|49.95|7.0|9;rheingau|50.0|8.0|10;rheinhessen|49.8|8.2|10;pfalz|49.3|8.1|9;nahe|49.8|7.6|10;franken|49.8|10.0|9;wurttemberg|49.0|9.2|9;ahr|50.52|7.1|10;saale|51.15|11.7|9;wachau|48.37|15.4|10;kamptal|48.5|15.7|10;kremstal|48.43|15.6|10;burgenland|47.8|16.6|9;steiermark|46.8|15.5|9;wagram|48.4|15.9|10;valais|46.2|7.5|9;vaud|46.5|6.6|10;ticino|46.2|8.95|10;santorini|36.4|25.4|11;nemea|37.8|22.7|10;naoussa|40.63|22.1|11;peloponnese|37.5|22.3|8;tokaj|48.12|21.4|10;tokaji|48.12|21.4|10;eger|47.9|20.4|10;villany|45.87|18.45|11;california|37.0|-120.5|6;napa|38.5|-122.3|10;napa valley|38.5|-122.3|10;sonoma|38.5|-122.9|9;sonoma coast|38.45|-123.0|9;russian river valley|38.5|-122.9|10;paso robles|35.63|-120.7|10;santa barbara|34.6|-120.1|9;santa rita hills|34.65|-120.3|10;lodi|38.13|-121.3|10;mendocino|39.3|-123.4|9;willamette valley|45.1|-123.1|9;oregon|44.0|-120.5|6;washington state|47.2|-120.5|6;columbia valley|46.3|-119.5|7;walla walla|46.06|-118.3|10;finger lakes|42.6|-76.9|8;barossa|-34.55|138.95|10;barossa valley|-34.55|138.95|10;mclaren vale|-35.2|138.55|10;margaret river|-33.95|115.05|9;hunter valley|-32.75|151.3|9;yarra valley|-37.65|145.5|9;coonawarra|-37.3|140.83|10;eden valley|-34.65|139.1|10;clare valley|-33.83|138.6|10;tasmania|-42.0|146.6|7;adelaide hills|-34.95|138.8|10;marlborough|-41.5|173.8|8;central otago|-45.0|169.2|8;hawke s bay|-39.6|176.8|8;hawkes bay|-39.6|176.8|8;martinborough|-41.25|175.5|10;gisborne|-38.65|177.9|9;maipo|-33.7|-70.8|9;maipo valley|-33.7|-70.8|9;colchagua|-34.6|-71.4|9;casablanca|-33.3|-71.4|10;maule|-35.5|-71.6|8;aconcagua|-32.8|-70.8|9;mendoza|-33.0|-68.8|8;salta|-25.0|-65.8|7;patagonia|-39.0|-68.0|6;uco valley|-33.6|-69.2|9;lujan de cuyo|-33.1|-68.9|10;cafayate|-26.07|-65.98|10;stellenbosch|-33.9|18.85|10;swartland|-33.3|18.7|9;paarl|-33.75|18.95|10;franschhoek|-33.9|19.1|11;constantia|-34.03|18.42|11;hemel en aarde|-34.4|19.25|10;walker bay|-34.4|19.3|10;bekaa|33.85|35.9|9;niagara|43.15|-79.1|9;okanagan|49.8|-119.5|8;sussex|50.95|-0.3|9";
+var GEO_CEN_RAW="italy|42.8|12.5|5;spain|40.2|-3.7|5;france|46.6|2.4|5;portugal|39.6|-8.0|6;germany|51.0|10.3|5;austria|47.6|14.1|6;switzerland|46.8|8.2|7;greece|38.5|23.0|6;hungary|47.2|19.5|6;united states|39.0|-98.0|3;australia|-28.0|134.0|3;new zealand|-41.0|172.5|5;chile|-33.5|-70.7|4;argentina|-34.0|-64.0|4;south africa|-30.5|24.0|5;lebanon|33.9|35.9|8;canada|56.0|-96.0|3;england|52.5|-1.5|6;united kingdom|54.0|-2.5|5;croatia|45.1|15.2|6;slovenia|46.1|14.8|8;romania|45.9|24.9|6;bulgaria|42.7|25.2|6;georgia|42.0|43.5|6;moldova|47.2|28.5|7;uruguay|-32.8|-56.0|6;brazil|-14.0|-51.0|4;mexico|23.6|-102.5|4;turkey|39.0|35.0|5;israel|31.5|34.9|7;morocco|31.8|-7.1|5;china|35.0|105.0|3;japan|36.0|138.0|5;ukraine|49.0|32.0|5;czech republic|49.8|15.5|7;slovakia|48.7|19.7|7;serbia|44.0|21.0|7;north macedonia|41.6|21.7|8;cyprus|35.0|33.2|8;malta|35.9|14.4|10;luxembourg|49.8|6.1|9;india|21.0|78.0|4";
+var GEO=[],GEO_C={},GEO_READY=false;
+function geoInit(){
+  if(GEO_READY)return;GEO_READY=true;
+  GEO_RAW.split(';').forEach(function(r){var a=r.split('|');GEO.push({k:a[0],lat:+a[1],lon:+a[2],z:+a[3],c:''});});
+  GEO_CEN_RAW.split(';').forEach(function(r){var a=r.split('|');GEO_C[a[0]]={lat:+a[1],lon:+a[2],z:+a[3]};});
+  var cm={};REGION_KEYS.forEach(function(x){cm[x[0]]=x[1];});GEO.forEach(function(g){g.c=cm[g.k]||'';});
+}
+function geoText(v){return ' '+norm(v).replace(/[^a-z0-9]+/g,' ').trim()+' ';}
+function mapFor(w){
+  geoInit();
+  var country=norm(impCountry(w.country)).trim(),fields=[w.appellation,w.region,w.name],i,j;
+  for(i=0;i<fields.length;i++){
+    var H=geoText(fields[i]||''),best=null;if(H.length<3)continue;
+    for(j=0;j<GEO.length;j++){
+      var g=GEO[j];
+      if(H.indexOf(' '+g.k+' ')===-1)continue;
+      if(country&&g.c&&norm(g.c)!==country)continue;
+      if(!best||g.z>best.z||(g.z===best.z&&g.k.length>best.k.length))best=g;
+    }
+    if(best)return {lat:best.lat,lon:best.lon,z:best.z,label:best.k.replace(/\b[a-z]/g,function(c){return c.toUpperCase();}),precise:true};
+  }
+  var c=GEO_C[country];
+  return c?{lat:c.lat,lon:c.lon,z:c.z,label:impCountry(w.country),precise:false}:null;
+}
+function mapTiles(lat,lon,z){
+  var n=Math.pow(2,z),latr=lat*Math.PI/180;
+  var fx=(lon+180)/360*n,fy=(1-Math.log(Math.tan(latr)+1/Math.cos(latr))/Math.PI)/2*n;
+  var cx=Math.floor(fx),cy=Math.floor(fy),out='',dx,dy;
+  for(dy=-1;dy<=1;dy++)for(dx=-1;dx<=1;dx++){
+    var tx=((cx+dx)%n+n)%n,ty=cy+dy;
+    if(ty<0||ty>=n)continue;
+    out+='<img class="mtile" alt="" width="256" height="256" style="left:'+((dx+1)*256)+'px;top:'+((dy+1)*256)+'px" src="https://tile.openstreetmap.org/'+z+'/'+tx+'/'+ty+'.png" onerror="this.style.visibility=\'hidden\'">';
+  }
+  return {html:out,px:256+(fx-cx)*256,py:256+(fy-cy)*256};
+}
+function mapView(){
+  var w=S.wines.filter(function(x){return x.id===S.map.id;})[0],m=w&&mapFor(w);
+  if(!m){S.view='list';return listView();}
+  var z=Math.max(3,Math.min(12,m.z+S.map.dz)),T=mapTiles(m.lat,m.lon,z);
+  var where=[w.region,w.country].filter(Boolean).join(', ');
+  return '<div class="wrap"><button class="back" data-act="go-detail-back">← Back</button>'+
+    '<h1 class="h2">Where it comes from</h1>'+
+    '<p class="muted"><strong>'+esc(w.name)+'</strong>'+(where?' · '+flagHtml(w.country)+esc(where):'')+'</p>'+
+    '<div class="mapbox" role="img" aria-label="Map showing '+esc(m.label)+'"><div class="mapgrid" style="width:768px;height:768px;transform:translate(-'+T.px.toFixed(1)+'px,-'+T.py.toFixed(1)+'px)">'+T.html+'</div><span class="mappin" aria-hidden="true"></span></div>'+
+    '<div class="trow" style="justify-content:center"><button class="btn" data-act="map-zoom" data-d="-1"'+(z<=3?' disabled':'')+' aria-label="Zoom out">− Zoom out</button><button class="btn" data-act="map-zoom" data-d="1"'+(z>=12?' disabled':'')+' aria-label="Zoom in">+ Zoom in</button></div>'+
+    '<p class="muted" style="font-size:13px">'+(m.precise?'Approximate position of '+esc(m.label)+'.':'Showing the country only. Add a region or appellation to the wine to see it more precisely.')+' Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.</p></div>';
 }
 
 /* ---- Stats ---- */
@@ -1632,6 +1688,9 @@ var ACT={
     nav('list');
   },
   'go-stats':function(){nav('stats');},
+  'show-map':function(){var w=getSel();if(!w||!mapFor(w))return;S.map={id:w.id,dz:0};nav('map');},
+  'map-zoom':function(el){if(!S.map)return;S.map.dz+=(+el.dataset.d);render(true);},
+  'go-detail-back':function(){nav('detail');},
   'stat-go':function(el){
     var k=el.dataset.k,v=el.dataset.v;
     S.f={country:'',region:'',grape:'',rating:0,tasted:''};S.type='all';S.q='';S.shelf='coll';
