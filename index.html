@@ -92,9 +92,11 @@ input,select,textarea{
 textarea{resize:vertical;min-height:84px}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .searchbar input{padding:12px 14px}
+#results{width:100%;padding-left:0;padding-right:0;box-sizing:border-box}
+#results>*{width:100%;box-sizing:border-box}
 .menurow{all:unset;display:block;width:100%;cursor:pointer;box-sizing:border-box}
 .shelf{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
-.shbtn{flex:1;border:0;background:transparent;color:var(--ink);padding:9px 8px;border-radius:9px;font:600 14px var(--font-body);cursor:pointer;min-height:40px}
+.shbtn{flex:1;border:0;background:transparent;color:var(--ink);padding:9px 3px;border-radius:9px;font:600 13px var(--font-body);cursor:pointer;min-height:40px}
 .shbtn.on{background:var(--ink);color:var(--bg,#fff)}
 .wtag{font:600 11px var(--font-body);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
@@ -287,7 +289,7 @@ var RESEARCH={
 
 /* ---- Small helpers ---- */
 var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:''},fOpen:false};
-try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want')S.shelf='want';if(_v.f&&typeof _v.f==='object')Object.keys(S.f).forEach(function(k){if(_v.f[k]!==undefined)S.f[k]=_v.f[k];});}}catch(e){}
+try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want'||_v.shelf==='coll')S.shelf=_v.shelf;if(_v.f&&typeof _v.f==='object')Object.keys(S.f).forEach(function(k){if(_v.f[k]!==undefined)S.f[k]=_v.f[k];});}}catch(e){}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
@@ -528,7 +530,29 @@ function sorter(mode){
   }
 }
 function isWant(w){return w.status==='want';}
-function shelfWines(){var want=S.shelf==='want';return S.wines.filter(function(w){return isWant(w)===want;});}
+function qtyOf(w){var n=parseInt(w.qty,10);return n>0?Math.min(n,9999):0;}
+function clampQty(v){var n=parseInt(v,10);return n>0?Math.min(n,999):1;}
+function bottlesText(n){return n+(n===1?' bottle':' bottles');}
+function shelfOf(w,sh){
+  if(sh==='want')return isWant(w);
+  if(isWant(w))return false;
+  if(sh==='coll')return qtyOf(w)>0;
+  return (w.tastings&&w.tastings.length>0)||qtyOf(w)===0;
+}
+function shelfWines(){return S.wines.filter(function(w){return shelfOf(w,S.shelf);});}
+function subLine(){
+  var ws=shelfWines(),n=ws.length;
+  if(S.shelf==='coll'){var b=ws.reduce(function(a,w){return a+qtyOf(w);},0);return n+(n===1?' wine':' wines')+' · '+bottlesText(b);}
+  if(S.shelf==='want')return n+(n===1?' wine':' wines')+' to try';
+  var t=ws.reduce(function(a,w){return a+w.tastings.length;},0);
+  return n+(n===1?' wine':' wines')+' · '+t+(t===1?' tasting':' tastings');
+}
+function shelfBar(){
+  var cw=S.wines.filter(function(w){return shelfOf(w,'coll');}),bottles=cw.reduce(function(a,w){return a+qtyOf(w);},0);
+  var jn=S.wines.filter(function(w){return shelfOf(w,'cellar');}).length,wn=S.wines.filter(function(w){return isWant(w);}).length;
+  var b=function(v,label){return '<button class="shbtn'+(S.shelf===v?' on':'')+'" data-act="shelf" data-v="'+v+'" aria-pressed="'+(S.shelf===v)+'">'+label+'</button>';};
+  return '<div class="shelf" role="group" aria-label="Which list">'+b('coll','Collection ('+bottles+')')+b('cellar','Journal ('+jn+')')+b('want','Want to try ('+wn+')')+'</div>';
+}
 function filtered(){
   var ws=shelfWines().filter(function(w){return (S.type==='all'||w.type===S.type)&&passes(w);});
   if(S.q.trim()){
@@ -565,8 +589,8 @@ function rowHtml(w){
   return '<li><button class="row" data-act="open" data-id="'+w.id+'">'+thumb(w)+
     '<span class="rbody"><span class="rname">'+esc(w.name||'Untitled wine')+'</span><span class="rmeta">'+esc(meta)+'</span><span class="rmeta">'+esc(where)+'</span>'+
     (isWant(w)&&w.seen?'<span class="rwhere">Seen: '+esc(w.seen)+'</span>':'')+(last&&last.where?'<span class="rwhere">Last: '+esc(last.where)+'</span>':'')+'</span>'+
-    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
-    '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>')+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
+    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':'')+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':''):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
+    '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>'))+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
 }
 function addLabel(){var q=S.q.trim();return q?'+ Add “'+esc(q.slice(0,40))+'” to Want to try':'+ Add a wine by name';}
 function resultsHtml(){
@@ -574,11 +598,12 @@ function resultsHtml(){
   if(!ws.length){
     if(shelfWines().length&&S.shelf==='want'&&S.q.trim()&&!filterCount())return '<div class="empty"><p class="etitle">Not on your list</p><p>This searches only wines already on your list. To add one, type it in.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div></div>';
     if(shelfWines().length)return '<div class="empty"><p class="etitle">No matches</p><p>Try fewer words or another spelling. Search also covers where you tried a wine and who tasted it.'+(filterCount()?' Your filters may be hiding wines.':'')+'</p>'+(filterCount()?'<div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
+    if(S.shelf==='coll'&&S.wines.length)return '<div class="empty"><p class="etitle">No bottles in your collection yet</p><p>Scan a label and choose Add to collection, or import a spreadsheet of what you own.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
     if(S.shelf==='want')return '<div class="empty"><p class="etitle">Nothing on your list yet</p><p>Scan a bottle and choose Want to try, or type in a wine you have heard about.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="add-typed">+ Add a wine by name</button></div></div>';
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label or wine list to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+shelfWines().length+'</p>':'';
-  return (S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
+  return (S.shelf==='coll'?'<div class="trow"><button class="btn btn-primary" data-act="go-drink">Drink a bottle</button></div>':'')+(S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
@@ -589,7 +614,7 @@ function toolsView(){
   var passField=S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<div class="field"><label class="flabel" for="passcode">Scan passcode (only if you set one in Vercel)</label><input id="passcode" type="password" data-bind="p.v" value="'+esc(S.pass)+'" autocomplete="off" placeholder="Leave empty if none"></div>';
   var csvPanel=S.csv?'<div class="field"><label class="flabel" for="csvbox">Copy this text and paste it into a spreadsheet. Your browser blocked the copy button.</label><textarea id="csvbox" class="csv" readonly>'+esc(S.csv)+'</textarea></div>':'';
   return '<div class="wrap">'+
-    '<button class="back" data-act="go-list">← Cellar</button>'+
+    '<button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
       toolBtn('imp-open','Import spreadsheet','Bring in a CSV list or rows copied from a spreadsheet')+
@@ -608,16 +633,14 @@ function toolsView(){
   '</div>';
 }
 function listView(){
-  var cellarW=S.wines.filter(function(w){return !isWant(w);}),wantN=S.wines.length-cellarW.length;
-  var total=cellarW.length,tastings=cellarW.reduce(function(n,w){return n+w.tastings.length;},0);
   var present=TYPES.filter(function(t){return shelfWines().some(function(w){return w.type===t;});});
   if(S.type!=='all'&&present.indexOf(S.type)===-1)S.type='all';
   var hasEx=S.wines.some(function(w){return w.example;});
   return '<div class="wrap">'+
-    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+total+(total===1?' wine':' wines')+' · '+tastings+(tastings===1?' tasting':' tastings')+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan label or menu</button></div></header>'+
+    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+subLine()+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan label or menu</button></div></header>'+
     (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
-    '<div class="shelf" role="group" aria-label="Which list"><button class="shbtn'+(S.shelf==='cellar'?' on':'')+'" data-act="shelf" data-v="cellar" aria-pressed="'+(S.shelf==='cellar')+'">Cellar ('+total+')</button><button class="shbtn'+(S.shelf==='want'?' on':'')+'" data-act="shelf" data-v="want" aria-pressed="'+(S.shelf==='want')+'">Want to try ('+wantN+')</button></div>'+
-    '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="'+(S.shelf==='want'?'Search your Want to try list':'Search name, grape, region, place, taster')+'" autocomplete="off" aria-label="'+(S.shelf==='want'?'Search your Want to try list':'Search your cellar')+'"></div>'+
+    shelfBar()+
+    '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="'+(S.shelf==='want'?'Search your Want to try list':(S.shelf==='coll'?'Search your collection':'Search name, grape, region, place, taster'))+'" autocomplete="off" aria-label="Search this list"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+sortFilterBar()+
     '<div id="results" class="wrap" style="gap:10px">'+resultsHtml()+'</div>'+
   '</div>';
@@ -627,15 +650,15 @@ function listView(){
 function scanView(){
   var n=S.photos.length;
   var photos=n?'<ul class="photos">'+S.photos.map(function(p,i){return '<li><img src="'+p+'" alt="Label photo '+(i+1)+'"><button class="x" data-act="rm-photo" data-i="'+i+'" aria-label="Remove photo '+(i+1)+'">×</button></li>';}).join('')+'</ul>':'';
-  var menuMode=S.scanMode==='menu',maxP=menuMode?4:3;
+  var menuMode=S.scanMode==='menu',drinkMode=S.scanMode==='drink',maxP=menuMode?4:(drinkMode?2:3);
   var picker=n<maxP?'<div class="picks"><div class="pick"><input id="photoCam" class="vh photo-in" type="file" accept="image/*" capture="environment"><label class="drop" for="photoCam"><span class="dtitle">Take a photo</span><span class="dsub">Opens the camera</span></label></div><div class="pick"><input id="photoLib" class="vh photo-in" type="file" accept="image/*"><label class="drop" for="photoLib"><span class="dtitle">Choose a photo</span><span class="dsub">From your library or files</span></label></div></div>'+(n?'':'<p class="muted">If the camera does not open here, take the picture with your camera app first, then choose it.</p>'):'';
   var actions=S.scanning?
     '<div class="reading" role="status"><span class="bar"></span>'+(menuMode?'Reading wine list…':'Reading label…')+'</div>':
-    (menuMode?(n?'<button class="btn btn-primary wide" data-act="read">Read wine list</button>':'<p class="muted">Add a photo of the wine list first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
+    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">Read wine list</button>':'<p class="muted">Add a photo of the wine list first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
   var modes='<div class="shelf" role="group" aria-label="What are you scanning"><button class="shbtn'+(menuMode?'':' on')+'" data-act="scan-mode" data-v="label" aria-pressed="'+!menuMode+'">A bottle label</button><button class="shbtn'+(menuMode?' on':'')+'" data-act="scan-mode" data-v="menu" aria-pressed="'+menuMode+'">A wine list</button></div>';
-  return '<div class="wrap"><button class="back" data-act="go-list">← Cellar</button>'+
-    '<h1 class="h2">'+(menuMode?'Scan a wine list':'Scan a label')+'</h1>'+modes+
-    (menuMode?'<p class="muted">Photograph each page of the list, close enough to read the small print. Up to 4 photos. It only reads what is printed; nothing is looked up until you ask.</p>':'<p class="muted">Photograph the front label. Add the back label too if it lists grapes or alcohol. Up to 3 photos.</p>')+
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
+    '<h1 class="h2">'+(drinkMode?'Drink a bottle':(menuMode?'Scan a wine list':'Scan a label'))+'</h1>'+(drinkMode?'':modes)+
+    (drinkMode?'<p class="muted">Photograph the label of the bottle you are opening. It finds the wine in your collection, then you say how many you are drinking.</p>':menuMode?'<p class="muted">Photograph each page of the list, close enough to read the small print. Up to 4 photos. It only reads what is printed; nothing is looked up until you ask.</p>':'<p class="muted">Photograph the front label. Add the back label too if it lists grapes or alcohol. Up to 3 photos.</p>')+
     photos+picker+'<div class="actions">'+actions+'</div></div>';
 }
 
@@ -643,7 +666,7 @@ function scanView(){
 function reviewView(){
   var d=S.draft,edit=!!d.editId;
   var dup=S.dup?S.wines.filter(function(w){return w.id===S.dup;})[0]:null;
-  var dupHtml=dup?'<div class="dup" role="alert"><p><strong>Already '+(isWant(dup)?'on your Want to try list':'in your cellar')+'.</strong> '+esc([dup.producer,dup.name,dup.vintage].filter(Boolean).join(' · '))+' matches this scan.</p><div class="trow"><button class="btn btn-primary" data-act="dup-add">'+(hasTasting(d.t)?(isWant(dup)?'Add tasting and move to cellar':'Add as a new tasting'):'Open the existing wine')+'</button><button class="btn" data-act="dup-new">Save as a separate wine</button></div></div>':'';
+  var dupHtml=dup?'<div class="dup" role="alert"><p><strong>Already '+(isWant(dup)?'on your Want to try list':(qtyOf(dup)?'in your collection':'in your tasting journal'))+'.</strong> '+esc([dup.producer,dup.name,dup.vintage].filter(Boolean).join(' · '))+' matches this scan.</p><div class="trow"><button class="btn btn-primary" data-act="dup-add">'+(S.dupMode==='coll'?'Add '+bottlesText(clampQty(d.qty))+' to it':(hasTasting(d.t)?(isWant(dup)?'Add tasting and move to tasting journal':'Add as a new tasting'):'Open the existing wine'))+'</button><button class="btn" data-act="dup-new">Save as a separate wine</button></div></div>':'';
   var photos=d.photos&&d.photos.length?'<ul class="photos sm">'+d.photos.map(function(p,i){return '<li><img src="'+p+'" alt="Label photo '+(i+1)+'"></li>';}).join('')+'</ul>':'';
   var lookBtn='<button class="btn" data-act="lookup"'+((S.looking||d.research)?' disabled':'')+'>'+(S.looking?'Looking up…':(d.research?'Looked up':'Look up more'))+'</button>';
   return '<div class="wrap">'+
@@ -656,7 +679,8 @@ function reviewView(){
     '<section class="card"><div class="field"><label class="flabel" for="f-notes">Notes about this wine</label><textarea id="f-notes" rows="3" data-bind="d.notes" placeholder="Anything not tied to one tasting: where you bought it, when to open it">'+esc(d.notes)+'</textarea></div></section>'+
     (edit?'':'<section class="card"><div><h2 class="h3">Your tasting</h2><p class="muted">Optional. You can add tastings later from the wine page.</p></div>'+tastingForm('t',d.t)+'</section>')+
     (edit?'':'<section class="card"><div class="field"><label class="flabel" for="f-seen">Want to try instead? Where did you see it</label><input id="f-seen" type="text" data-bind="d.seen" value="'+esc(d.seen||'')+'" placeholder="Optional, e.g. Eataly, €18" autocomplete="off"></div></section>')+
-    '<div class="actions"><button class="btn btn-primary wide" data-act="'+(edit?'save-edit':'save-new')+'">'+(edit?'Save changes':'Save to cellar')+'</button>'+(edit?'':'<button class="btn wide" data-act="save-want">Want to try</button>')+'</div>'+
+    (edit?'':'<section class="card"><div class="field"><label class="flabel" for="f-qty">Bottles you own (for Add to collection)</label><input id="f-qty" type="number" inputmode="numeric" min="1" max="999" data-bind="d.qty" value="'+esc(String(d.qty||1))+'"></div></section>')+
+    '<div class="actions"><button class="btn btn-primary wide" data-act="'+(edit?'save-edit':'save-new')+'">'+(edit?'Save changes':'Save to tasting journal')+'</button>'+(edit?'':'<button class="btn wide" data-act="save-coll">Add to collection</button><button class="btn wide" data-act="save-want">Want to try</button>')+'</div>'+
   '</div>';
 }
 
@@ -704,13 +728,14 @@ function detailView(){
       '<button class="link danger" data-act="del-tasting" data-id="'+t.id+'">'+(S.confirm==='t:'+t.id?'Tap again to delete':'Delete tasting')+'</button></li>';
   }).join('');
   var addForm=S.addOpen?tastingForm('nt',S.nt)+'<div class="actions"><button class="btn btn-primary wide" data-act="save-tasting">Save tasting</button></div>':'';
-  return '<div class="wrap"><button class="back" data-act="go-list">← Cellar</button>'+
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<header class="dhead">'+(w.photos&&w.photos[0]?'<button class="thumbbtn" data-act="lb-open" data-i="0" aria-label="Open photo" style="all:unset;cursor:zoom-in"><img class="dphoto" src="'+w.photos[0]+'" alt="Label photo"></button>':'')+
     '<div><p class="eyebrow">'+dot(w.type)+'<span>'+TYPE_LABEL[w.type]+(w.example?' · Example':'')+(isWant(w)?' · Want to try':'')+'</span></p>'+
     '<h1 class="dname">'+esc(w.name)+'</h1><p class="dsub">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</p>'+
     (avg?'<p class="davg">'+starsShow(Math.round(avg))+'<span>'+avg.toFixed(1)+' average from '+rated+(rated===1?' rating':' ratings')+'</span></p>':'')+'</div></header>'+
     '<section class="card"><h2 class="h3">Details</h2><dl class="facts">'+rows+'</dl></section>'+
     photosCard(w)+
+    (isWant(w)?'':'<section class="card"><div class="lrow"><div><h2 class="h3">Collection</h2><p class="muted">'+(qtyOf(w)?bottlesText(qtyOf(w))+' on hand.':'None on hand.')+'</p></div><div class="trow"><button class="btn" data-act="qty-dec" aria-label="Remove one bottle"'+(qtyOf(w)?'':' disabled')+'>−</button><button class="btn" data-act="qty-inc" aria-label="Add one bottle">+</button></div></div>'+(qtyOf(w)?'<div class="actions"><button class="btn btn-primary wide" data-act="drink-this">Drink a bottle</button></div>':'')+'</section>')+
     (isWant(w)?'<section class="card"><div class="lrow"><div><h2 class="h3">On your Want to try list</h2><p class="muted">'+(w.seen?'Seen: '+esc(w.seen)+'. ':'')+'Adding a tasting moves it to your cellar.</p></div><button class="btn btn-primary" data-act="to-cellar">Move to cellar</button></div></section>':'')+
     (w.research?'<section class="card">'+researchHtml(w.research)+'</section>':'<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price. Only empty fields get filled.</p></div><button class="btn" data-act="lookup-saved"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up more')+'</button></div></section>')+
     (w.notes?'<section class="card"><h2 class="h3">Notes</h2><p style="overflow-wrap:anywhere">'+esc(w.notes)+'</p></section>':'')+
@@ -729,6 +754,7 @@ function render(keep){
   else if(S.view==='review'&&S.draft)html=reviewView();
   else if(S.view==='detail')html=detailView();
   else if(S.view==='menu'&&S.menu)html=menuView();
+  else if(S.view==='drink'&&S.drink)html=drinkView();
   else if(S.view==='import')html=importView();
   else if(S.view==='tools')html=toolsView();
   else{S.view='list';html=listView();}
@@ -808,7 +834,9 @@ function sampleDraft(){
   d.photos=S.photos.slice();d.src=src;d.notes='';d.research=null;d.sampleKey=s.key;d.t=blankTasting();d.live=false;
   return d;
 }
-function finishScan(d){S.draft=d;S.scanning=false;S.dup=null;nav('review');}
+function finishScan(d){
+  if(S.scanMode==='drink'){S.scanning=false;drinkFrom(d);return;}
+  S.draft=d;S.scanning=false;S.dup=null;nav('review');}
 function buildExamples(){
   return S.wines.filter(function(w){return w.fixed&&w.scanned&&w.photos&&w.photos[0]&&String(w.photos[0]).indexOf('data:image/jpeg')===0;})
     .sort(function(a,b){return (b.added||0)-(a.added||0);}).slice(0,3)
@@ -817,6 +845,7 @@ function buildExamples(){
 function startScan(){
   if(S.scanning)return;
   if(S.scanMode==='menu'){startMenu();return;}
+  if(S.scanMode==='drink'&&!S.full.filter(Boolean).length){toast('Add a photo of the label first.');return;}
   S.scanning=true;var tok=++S.tok;
   render(true);
   var imgs=S.full.filter(Boolean);
@@ -864,10 +893,10 @@ function startScan(){
 
 /* ---- Wine list ---- */
 function menuKey(x){return norm(x).replace(/[^a-z0-9]/g,'');}
-function menuMatch(it){
+function menuMatch(it,pool){
   var n=menuKey(it.name),p=menuKey(it.producer),v=menuKey(it.vintage);
   if(!n)return null;
-  return S.wines.filter(function(w){
+  return (pool||S.wines).filter(function(w){
     var wn=menuKey(w.name),wp=menuKey(w.producer),wv=menuKey(w.vintage);
     if(wn!==n&&!(p&&wn===menuKey(it.producer+' '+it.name))&&!(wp&&n===menuKey(w.producer+' '+w.name)))return false;
     if(p&&wp&&p!==wp)return false;
@@ -915,7 +944,7 @@ function menuRow(it){
   var where=[it.region,it.country].filter(Boolean).join(', ');
   var badge='';
   if(it.added)badge='<span class="wtag">Added to Want to try</span>';
-  else if(m){var a=avgRating(m);badge=isWant(m)?'<span class="wtag">On your Want to try list</span>':'<span class="wtag">In your cellar'+(a?' · '+a.toFixed(1)+'★':'')+'</span>';}
+  else if(m){var a=avgRating(m);badge=isWant(m)?'<span class="wtag">On your Want to try list</span>':'<span class="wtag">'+(qtyOf(m)?'In your collection · '+bottlesText(qtyOf(m)):'In your tasting journal')+(a?' · '+a.toFixed(1)+'★':'')+'</span>';}
   var actions=open?'<div class="trow" style="margin-top:8px">'+
     (it.added||(m&&isWant(m))?'':'<button class="btn" data-act="menu-want" data-id="'+it.id+'">Want to try</button>')+
     '<button class="btn" data-act="menu-drink" data-id="'+it.id+'">I\'m having this</button>'+
@@ -929,7 +958,7 @@ function menuView(){
   var M=S.menu,items=M.items,sec=[],last=null,html='';
   items.forEach(function(it){var k=it.section||'';if(k!==last){sec.push({t:k,rows:[]});last=k;}sec[sec.length-1].rows.push(it);});
   sec.forEach(function(g){html+=(g.t?'<h2 class="h3" style="margin:14px 0 6px">'+esc(g.t)+'</h2>':'')+'<ul class="list">'+g.rows.map(menuRow).join('')+'</ul>';});
-  return '<div class="wrap"><button class="back" data-act="go-list">← Cellar</button>'+
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Wine list</h1><p class="muted">'+items.length+(items.length===1?' wine':' wines')+' read. Tap one to save it or look it up. Wines marked Check this were hard to read.</p>'+
     '<div class="field"><label class="flabel" for="f-mplace">Where is this list from? (optional)</label><input id="f-mplace" type="text" data-bind="menuPlace" value="'+esc(S.menuPlace)+'" placeholder="e.g. Osteria Pane, Madrid" autocomplete="off"></div>'+
     html+'</div>';
@@ -941,6 +970,39 @@ function menuWine(it){
   if(TYPES.indexOf(w.type)===-1){w.type='red';src.type='none';}
   if(it.research){FIELD_KEYS.forEach(function(k){if(it.src&&it.src[k]==='researched')src[k]='researched';});}
   w.src=src;return w;
+}
+
+/* ---- Drink a bottle ---- */
+function drinkWine(){var D=S.drink;return D&&D.id?S.wines.filter(function(w){return w.id===D.id;})[0]:null;}
+function drinkFrom(d){
+  var pool=S.wines.filter(function(w){return qtyOf(w)>0&&!isWant(w);});
+  var m=menuMatch(d,pool);
+  S.drink={id:m?m.id:null,n:1,miss:m?'':(d.name||'that wine'),q:m?'':[d.producer,d.name].filter(Boolean).join(' ')};
+  clearPhotos();nav('drink');
+}
+function drinkListHtml(){
+  var D=S.drink,pool=S.wines.filter(function(w){return qtyOf(w)>0&&!isWant(w);}),ws;
+  if(D.q.trim())ws=pool.map(function(w){return [w,score(w,D.q)];}).filter(function(x){return x[1]>0;}).sort(function(a,b){return b[1]-a[1];}).map(function(x){return x[0];});
+  else ws=pool.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  if(!pool.length)return '<p class="muted">Your collection is empty. Add bottles first.</p>';
+  var note='';
+  if(!ws.length){note='<p class="muted" style="margin-bottom:8px">No close match. Showing your whole collection.</p>';ws=pool.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});}
+  return note+'<ul class="list">'+ws.slice(0,30).map(function(w){
+    return '<li><button class="row" data-act="drink-pick" data-id="'+w.id+'">'+thumb(w)+'<span class="rbody"><span class="rname">'+esc(w.name)+'</span><span class="rmeta">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</span></span><span class="rside"><span class="avg">×'+qtyOf(w)+'</span></span></button></li>';
+  }).join('')+'</ul>';
+}
+function drinkView(){
+  var D=S.drink,w=drinkWine(),top='';
+  if(w){
+    var left=qtyOf(w)-D.n;
+    top='<section class="card"><p class="eyebrow"><span>You are drinking</span></p><h2 class="h3" style="font-size:20px">'+esc(w.name)+'</h2><p class="muted">'+esc([w.producer,w.vintage].filter(Boolean).join(' · '))+'</p>'+
+      '<p style="margin-top:8px">You have <strong>'+bottlesText(qtyOf(w))+'</strong>.</p>'+
+      '<div class="lrow" style="margin-top:8px"><span>How many are you opening?</span><div class="trow"><button class="btn" data-act="drink-n" data-d="-1" aria-label="One fewer"'+(D.n<=1?' disabled':'')+'>−</button><strong style="min-width:28px;text-align:center">'+D.n+'</strong><button class="btn" data-act="drink-n" data-d="1" aria-label="One more"'+(D.n>=qtyOf(w)?' disabled':'')+'>+</button></div></div>'+
+      '<div class="actions"><button class="btn btn-primary wide" data-act="drink-go" data-t="1">Remove '+bottlesText(D.n)+' and add a tasting</button><button class="btn wide" data-act="drink-go" data-t="0">Just remove '+bottlesText(D.n)+' ('+left+' left)</button></div></section>';
+  }
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Drink a bottle</h1>'+
+    (D.miss&&!w?'<p class="notice" role="status">Could not find “'+esc(D.miss)+'” in your collection. Pick it from the list below.</p>':'')+top+
+    '<section class="card"><h2 class="h3">'+(w?'Not this wine?':'Choose from your collection')+'</h2><div class="searchbar" style="margin-top:8px"><input id="dq" type="search" data-dsearch value="'+esc(D.q)+'" placeholder="Search your collection" autocomplete="off" aria-label="Search your collection"></div><div id="dresults" style="margin-top:8px">'+drinkListHtml()+'</div></section></div>';
 }
 
 /* ---- Web lookup ---- */
@@ -988,36 +1050,38 @@ function liveLookup(w,stillHere,after){
 
 /* ---- Saving ---- */
 function saveNew(force,status){
-  status=status==='want'?'want':'';
+  status=status==='want'?'want':(status==='coll'?'coll':'');
   var d=S.draft;
   if(!d.name.trim()){toast('Add a wine name first.');var el=document.getElementById('f-name');if(el)el.focus();return;}
-  if(!force){var dup=findDup(d);if(dup){S.dup=dup.id;S.dupWant=status==='want';render(false);window.scrollTo(0,0);return;}}
+  if(!force){var dup=findDup(d);if(dup){S.dup=dup.id;S.dupMode=status;render(false);window.scrollTo(0,0);return;}}
   var w=pick(d,FIELD_KEYS);
   FIELD_KEYS.forEach(function(k){w[k]=(w[k]||'').trim();});
   w.id=uid();w.src=d.src;w.photos=d.photos||[];w.notes=d.notes.trim();w.sampleKey=d.sampleKey;w.research=d.research;w.added=Date.now();
   FIELD_KEYS.forEach(function(k){if(w.src[k]==='unsure')w.src[k]='label';});
   if(d.manual){w.src={};FIELD_KEYS.forEach(function(k){w.src[k]=w[k]?'manual':'none';});}
   if(d.orig){w.scanned=d.orig;w.fixed=FIELD_KEYS.some(function(k){return (d.orig[k]||'')!==(w[k]||'');});}
+  if(status==='coll')w.qty=clampQty(d.qty);
   if(status==='want'){w.status='want';w.seen=(d.seen||'').trim().slice(0,120);w.tastings=[];}
   else{w.tastings=hasTasting(d.t)?[tastingFrom(d.t)]:[];
     if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();}
   S.wines.unshift(w);persist();
   S.sel=w.id;S.dup=null;S.draft=null;clearPhotos();
-  if(status==='want'){S.shelf='want';saveView();}else{S.shelf='cellar';saveView();}
-  toast(status==='want'?'Saved to Want to try.':'Saved to your cellar.');nav('detail');
+  S.shelf=status==='want'?'want':(status==='coll'?'coll':'cellar');saveView();
+  toast(status==='want'?'Saved to Want to try.':(status==='coll'?'Added '+bottlesText(w.qty)+' to your collection.':'Saved to your tasting journal.'));nav('detail');
 }
 function tastingFrom(t){return {id:uid(),where:t.where.trim(),date:t.date,taster:t.taster.trim(),rating:t.rating,price:String(t.price||'').trim(),notes:t.notes.trim()};}
 
 function sheetCell(v,sep){var s=String(v==null?'':v);return (s.indexOf(sep)!==-1||/["\n\r]/.test(s))?'"'+s.replace(/"/g,'""')+'"':s;}
 function sheetRows(){
-  var rows=[['wine','producer','vintage','type','grapes','country','region','appellation','abv','volume_ml','wine_notes','date','place','taster','rating','price','tasting_notes','producer_background','style','drink_window','typical_price','sources','status','where_seen']];
+  var rows=[['wine','producer','vintage','type','grapes','country','region','appellation','abv','volume_ml','wine_notes','date','place','taster','rating','price','tasting_notes','producer_background','style','drink_window','typical_price','sources','status','where_seen','bottles']];
   S.wines.forEach(function(w){
     var r=w.research||{};
     var srcs=(r.sources||[]).map(function(x){return x.url;}).filter(Boolean).join(' ');
     var base=[w.name,w.producer,w.vintage,w.type,w.grapes,w.country,w.region,w.appellation,w.abv,w.volume,w.notes];
     var tail=[r.producer||'',r.style||'',r.drink||'',r.price||'',srcs,isWant(w)?'want to try':'cellar',w.seen||''];
-    if(!w.tastings.length)rows.push(base.concat(['','','','','',''],tail));
-    else w.tastings.forEach(function(t){rows.push(base.concat([t.date,t.where,t.taster,t.rating||'',t.price,t.notes],tail));});
+    var qcell=qtyOf(w)||'';
+    if(!w.tastings.length)rows.push(base.concat(['','','','','',''],tail,[qcell]));
+    else w.tastings.forEach(function(t,ti){rows.push(base.concat([t.date,t.where,t.taster,t.rating||'',t.price,t.notes],tail,[ti===0?qcell:'']));});
   });
   return rows;
 }
@@ -1068,7 +1132,7 @@ function missingCountries(){return S.wines.filter(function(w){return !(w.country
 var IMP_FIELDS=[
   ['name','Wine name'],['producer','Producer'],['vintage','Vintage'],['type','Type'],['grapes','Grapes'],['country','Country'],['region','Region'],
   ['appellation','Appellation'],['abv','Alcohol %'],['volume','Volume'],['wnotes','Notes about the wine'],
-  ['date','Date tasted'],['place','Where tasted'],['taster','Taster'],['rating','Rating'],['price','Price paid'],['tnotes','Tasting notes'],['status','Status (cellar / want to try)'],['seen','Where you saw it']
+  ['date','Date tasted'],['place','Where tasted'],['taster','Taster'],['rating','Rating'],['price','Price paid'],['tnotes','Tasting notes'],['qty','Bottles (quantity)'],['status','Status (cellar / want to try)'],['seen','Where you saw it']
 ];
 var IMP_KEYS=IMP_FIELDS.map(function(f){return f[0];});
 var IMP_LABEL={};IMP_FIELDS.forEach(function(f){IMP_LABEL[f[0]]=f[1];});
@@ -1091,9 +1155,20 @@ var IMP_SYN={
   rating:'rating score stars rate points voto punteggio puntuacion grade',
   price:'price cost paid pricepaid prezzo precio prix preis',
   tnotes:'tastingnotes tasting notes note comments comment review impressions nota notas notizen commento commenti comentario comentarios commentaire commentaires bemerkungen anmerkungen appunti remarks memo thoughts',
+  qty:'qty quantity bottles bottle count cantidad quantita quantite stock inventory units pcs nb',
   status:'status list shelf wishlist wish state',
   seen:'whereseen wheresaw seenat whereyousawit source'
 };
+function impQty(s){var m=String(s==null?'':s).match(/\d+/);return m?Math.min(parseInt(m[0],10),999):0;}
+function impGuessColl(im){
+  if(im.map.indexOf('qty')!==-1)return true;
+  var tcols=['date','place','taster','rating','tnotes'].some(function(k){return im.map.indexOf(k)!==-1;});
+  if(tcols)return false;
+  var rows=im.rows.slice(im.header?1:0),seen={},dup=false,ni=im.map.indexOf('name'),pi=im.map.indexOf('producer'),vi=im.map.indexOf('vintage');
+  if(ni===-1)return false;
+  rows.forEach(function(r){var k=[r[ni],pi===-1?'':r[pi],vi===-1?'':r[vi]].map(function(x){return norm(String(x==null?'':x)).replace(/[^a-z0-9]/g,'');}).join('|');if(seen[k])dup=true;seen[k]=1;});
+  return dup;
+}
 function impKey(s){return norm(s).replace(/[^a-z0-9]/g,'');}
 function parseDelimited(text){
   text=String(text||'').replace(/^﻿/,'');
@@ -1198,7 +1273,7 @@ function impDateOrder(values){
 function impKeyOf(w){var k=function(x){return norm(x).replace(/[^a-z0-9]/g,'');};return k(w.name)+'|'+k(w.producer)+'|'+k(w.vintage);}
 /* Turns the parsed rows plus the column choices into wines. Nothing is saved here. */
 function buildImport(im){
-  var rows=im.rows.slice(im.header?1:0),map=im.map,groups={},order=[],noName=0;
+  var rows=im.rows.slice(im.header?1:0),map=im.map,groups={},order=[],noName=0,coll=!!im.coll,qi=map.indexOf('qty');
   var dci=map.indexOf('date'),dorder=dci===-1?'':impDateOrder(rows.map(function(r){return r[dci];}));
   rows.forEach(function(r){
     var v={};IMP_KEYS.forEach(function(k){v[k]='';});
@@ -1209,27 +1284,31 @@ function buildImport(im){
     if(!w.country){var ic=inferCountry(w);if(ic){w.country=ic;w.countryInferred=true;}}
     var t={date:impDate(v.date,dorder),where:v.place.slice(0,120),taster:v.taster.slice(0,60),rating:impRating(v.rating),price:v.price.slice(0,40),notes:v.tnotes.slice(0,280)};
     var has=!!(t.date||t.where||t.taster||t.rating||t.price||t.notes);
+    var rowQty=coll?(qi===-1?1:impQty(v.qty)):0;
     var wantRow=/want|wish|try|quiero|voglio|provare|probar|buy/i.test(v.status||'');
     var key=impKeyOf(w),g=groups[key];
-    if(!g){g=groups[key]={wine:w,tastings:[],want:wantRow,seen:v.seen.slice(0,120)};order.push(key);}
+    if(!g){g=groups[key]={wine:w,tastings:[],want:wantRow,seen:v.seen.slice(0,120),qty:0,tk:{}};order.push(key);}
     else if(wantRow&&!g.want&&!g.tastings.length&&!has){g.want=true;}
     else FIELD_KEYS.concat(['notes']).forEach(function(k){if(!g.wine[k]&&w[k])g.wine[k]=w[k];});
-    if(has)g.tastings.push(t);
+    g.qty+=rowQty;
+    var tkey=[t.date,t.where,t.taster,t.rating,t.notes].join('|');
+    if(has&&!(coll&&g.tk[tkey]))g.tastings.push(t);
+    g.tk[tkey]=1;
     if(has)g.want=false;
   });
   var existing={};S.wines.forEach(function(w){existing[impKeyOf(w)]=w;});
-  var fresh=[],dupes=0,newT=0;
+  var fresh=[],dupes=0,newT=0,bottles=0;
   order.forEach(function(key){
     var g=groups[key],ex=existing[key],tk=function(t){return [t.date,t.where,t.taster,t.rating,t.notes].join('|');};
     if(ex){
       dupes++;
       var have={};ex.tastings.forEach(function(t){have[tk(t)]=1;});
       var add=g.tastings.filter(function(t){return !have[tk(t)];});
-      newT+=add.length;
-      if(add.length)fresh.push({existing:ex,tastings:add});
-    }else{newT+=g.tastings.length;fresh.push({wine:g.wine,tastings:g.tastings,want:g.want&&!g.tastings.length,seen:g.seen});}
+      newT+=add.length;bottles+=g.qty;
+      if(add.length||g.qty)fresh.push({existing:ex,tastings:add,qty:g.qty});
+    }else{newT+=g.tastings.length;var isW=g.want&&!g.tastings.length;if(!isW)bottles+=g.qty;fresh.push({wine:g.wine,tastings:g.tastings,want:isW,seen:g.seen,qty:isW?0:g.qty});}
   });
-  return {items:fresh,newWines:fresh.filter(function(x){return x.wine;}).length,dupes:dupes,newTastings:newT,noName:noName,rows:rows.length};
+  return {items:fresh,newWines:fresh.filter(function(x){return x.wine;}).length,dupes:dupes,newTastings:newT,bottles:bottles,noName:noName,rows:rows.length};
 }
 function impSample(im,ci){
   var rows=im.rows.slice(im.header?1:0),i;
@@ -1249,13 +1328,14 @@ function impLoad(text){
   if(P.rows.length>501){P.rows=P.rows.slice(0,501);truncated=true;}
   var im={rows:P.rows,header:true,map:[],truncated:truncated,busy:false};
   im.map=impAutoMap(impHeaders(im));
+  im.coll=impGuessColl(im);
   S.imp=im;
   render(false);window.scrollTo(0,0);
   if(im.map.indexOf('name')===-1)ACT['imp-ai']();
 }
 function importView(){
   var im=S.imp;
-  var back='<button class="back" data-act="imp-cancel">← Cellar</button>';
+  var back='<button class="back" data-act="imp-cancel">← Back</button>';
   if(!im||!im.rows){
     return '<div class="wrap">'+back+'<h1 class="h2">Import a spreadsheet</h1>'+
       '<p class="muted">Bring in a list you already keep. Your columns can be named and ordered any way you like, and you check the match before anything is saved.</p>'+
@@ -1274,14 +1354,16 @@ function importView(){
   }).join('');
   var parts=[];
   parts.push('<strong>'+R.newWines+(R.newWines===1?' new wine':' new wines')+'</strong>');
+  if(R.bottles)parts.push(bottlesText(R.bottles)+' for your collection');
   if(R.newTastings)parts.push(R.newTastings+(R.newTastings===1?' tasting':' tastings'));
-  if(R.dupes)parts.push(R.dupes+' already in your cellar (not copied again)');
+  if(R.dupes)parts.push(R.dupes+' already in your app'+(im.coll?' (bottles are added to them)':' (not copied again)'));
   if(R.noName)parts.push(R.noName+(R.noName===1?' row':' rows')+' skipped for having no wine name');
-  var can=hasName&&(R.newWines||R.newTastings)&&!im.busy;
+  var can=hasName&&(R.newWines||R.newTastings||R.bottles)&&!im.busy;
   return '<div class="wrap">'+back+'<h1 class="h2">Check the match</h1>'+
     '<p class="muted">'+(im.rows.length-(im.header?1:0))+' rows found. Tell the app what each column holds. Change any that look wrong.</p>'+
     (im.truncated?'<p class="notice">Only the first 500 rows are read at a time. Import these, then do the rest.</p>':'')+
     '<label class="chk"><input type="checkbox" data-act="imp-header"'+(im.header?' checked':'')+'> First row is a header</label>'+
+    '<label class="chk"><input type="checkbox" data-act="imp-coll"'+(im.coll?' checked':'')+'> This is my collection: '+(im.map.indexOf('qty')!==-1?'use the bottles column':'count each repeated row as one bottle')+'</label>'+
     '<section class="card"><div class="mlist">'+cols+'</div><div class="actions"><button class="btn" data-act="imp-ai"'+(im.busy?' disabled':'')+'>'+(im.busy?'Matching…':'Ask Claude to match the columns')+'</button></div></section>'+
     (hasName?'':'<p class="notice" role="alert">Choose which column holds the wine name. Nothing can be imported without it.</p>')+
     '<section class="card"><h2 class="h3">What will happen</h2><p>'+parts.join(' · ')+'</p>'+(sample?'<ul class="mprev">'+sample+'</ul>':'')+'</section>'+
@@ -1350,7 +1432,23 @@ var ACT={
     liveLookup(w,function(){return S.view==='detail'&&getSel()===w;},function(){persist();});
   },
   'save-new':function(){saveNew(false);},
-  'dup-new':function(){saveNew(true,S.dupWant?'want':'');},
+  'dup-new':function(){saveNew(true,S.dupMode||'');},
+  'save-coll':function(){saveNew(false,'coll');},
+  'qty-inc':function(){var w=getSel();if(!w)return;w.qty=Math.min(qtyOf(w)+1,9999);persist();render(true);},
+  'qty-dec':function(){var w=getSel();if(!w||!qtyOf(w))return;w.qty=qtyOf(w)-1;persist();render(true);},
+  'drink-this':function(){var w=getSel();if(!w||!qtyOf(w))return;S.drink={id:w.id,n:1,q:'',miss:''};nav('drink');},
+  'go-drink':function(){S.tok++;S.scanning=false;S.scanMode='drink';clearPhotos();nav('scan');},
+  'drink-pick-open':function(){S.drink={id:null,n:1,q:'',miss:''};clearPhotos();nav('drink');},
+  'drink-pick':function(el){var D=S.drink;if(!D)return;D.id=el.dataset.id;D.n=1;render(true);window.scrollTo(0,0);},
+  'drink-n':function(el){var D=S.drink,w=D&&drinkWine();if(!w)return;D.n=Math.max(1,Math.min(qtyOf(w),D.n+(+el.dataset.d)));render(true);},
+  'drink-go':function(el){
+    var D=S.drink,w=D&&drinkWine();if(!w)return;
+    var n=Math.min(D.n,qtyOf(w));w.qty=qtyOf(w)-n;persist();
+    var tast=el.dataset.t==='1';
+    S.drink=null;
+    if(tast){S.sel=w.id;S.addOpen=true;S.nt=blankTasting();toast('Removed '+bottlesText(n)+'. Add your tasting.');nav('detail');}
+    else{S.shelf='coll';saveView();toast('Removed '+bottlesText(n)+'. '+bottlesText(qtyOf(w))+' left.');nav('list');}
+  },
   'add-typed':function(){
     var d={src:{},photos:[],notes:'',research:null,sampleKey:'',live:false,manual:true,seen:'',t:blankTasting()};
     FIELD_KEYS.forEach(function(k){d[k]='';});d.type='red';
@@ -1358,14 +1456,17 @@ var ACT={
     S.draft=d;S.dup=null;nav('review');
   },
   'save-want':function(){saveNew(false,'want');},
-  'shelf':function(el){S.shelf=el.dataset.v==='want'?'want':'cellar';S.type='all';saveView();render(true);},
-  'to-cellar':function(){var w=getSel();if(!w)return;delete w.status;S.shelf='cellar';persist();saveView();toast('Moved to your cellar.');render(true);},
+  'shelf':function(el){S.shelf=el.dataset.v==='want'?'want':(el.dataset.v==='coll'?'coll':'cellar');S.type='all';saveView();render(true);},
+  'to-cellar':function(){var w=getSel();if(!w)return;delete w.status;S.shelf='cellar';persist();saveView();toast('Moved to your tasting journal.');render(true);},
   'to-want':function(){var w=getSel();if(!w)return;w.status='want';S.shelf='want';persist();saveView();toast('Moved to Want to try.');render(true);},
   'dup-add':function(){
     var d=S.draft,w=S.wines.filter(function(x){return x.id===S.dup;})[0];
     if(!w)return;
-    if(hasTasting(d.t)){w.tastings.push(tastingFrom(d.t));if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();var was=isWant(w);delete w.status;if(was)S.shelf='cellar';persist();toast(was?'Tasting added. Moved to your cellar.':'Tasting added to the existing wine.');}
-    S.sel=w.id;S.dup=null;S.draft=null;clearPhotos();S.addOpen=false;S.nt=blankTasting();nav('detail');
+    var msg='';
+    if(S.dupMode==='coll'){var n=clampQty(d.qty);w.qty=qtyOf(w)+n;delete w.status;S.shelf='coll';msg='Added '+bottlesText(n)+'. You now have '+qtyOf(w)+'.';}
+    if(hasTasting(d.t)){w.tastings.push(tastingFrom(d.t));if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();var was=isWant(w);delete w.status;if(was&&S.dupMode!=='coll')S.shelf='cellar';msg=msg||(was?'Tasting added. Moved to your tasting journal.':'Tasting added to the existing wine.');}
+    if(msg){persist();saveView();toast(msg);}
+    S.sel=w.id;S.dup=null;S.dupMode='';S.draft=null;clearPhotos();S.addOpen=false;S.nt=blankTasting();nav('detail');
   },
   'edit':function(){
     var w=getSel();if(!w)return;
@@ -1392,7 +1493,7 @@ var ACT={
     w.tastings.push(tastingFrom(t));
     if(t.taster&&t.taster.trim())S.lastTaster=t.taster.trim();
     var wasW=isWant(w);if(wasW){delete w.status;S.shelf='cellar';saveView();}
-    S.nt=blankTasting();S.addOpen=false;persist();toast(wasW?'Tasting added. Moved to your cellar.':'Tasting added.');render(true);
+    S.nt=blankTasting();S.addOpen=false;persist();toast(wasW?'Tasting added. Moved to your tasting journal.':'Tasting added.');render(true);
   },
   'del-tasting':function(el){
     var w=getSel(),key='t:'+el.dataset.id;
@@ -1489,9 +1590,10 @@ var ACT={
   'imp-open':function(){S.imp=null;S.impFrom=S.view;nav('import');},
   'imp-cancel':function(){S.imp=null;nav(S.impFrom==='tools'?'tools':'list');},
   'imp-parse':function(){var el=document.getElementById('impText');impLoad(el?el.value:'');},
+  'imp-coll':function(){var im=S.imp;if(!im)return;im.coll=!im.coll;render(true);},
   'imp-header':function(){
     var im=S.imp;if(!im)return;
-    im.header=!im.header;im.map=impAutoMap(impHeaders(im));render(true);
+    im.header=!im.header;im.map=impAutoMap(impHeaders(im));im.coll=impGuessColl(im);render(true);
   },
   'imp-ai':function(){
     var im=S.imp;if(!im||im.busy)return;
@@ -1518,7 +1620,7 @@ var ACT={
     var im=S.imp;if(!im||im.map.indexOf('name')===-1)return;
     var R=buildImport(im),now=Date.now(),added=0;
     R.items.forEach(function(it,i){
-      if(it.existing){it.tastings.forEach(function(t){it.existing.tastings.push(Object.assign({id:uid()},t));});delete it.existing.status;return;}
+      if(it.existing){it.tastings.forEach(function(t){it.existing.tastings.push(Object.assign({id:uid()},t));});if(it.qty)it.existing.qty=qtyOf(it.existing)+it.qty;delete it.existing.status;return;}
       var w=it.wine,src={};
       FIELD_KEYS.forEach(function(k){src[k]=w[k]?'manual':'none';});
       if(w.countryInferred){src.country='inferred';delete w.countryInferred;}
@@ -1526,9 +1628,10 @@ var ACT={
       w.id=uid();w.src=src;w.photos=[];w.sampleKey='';w.research=null;w.imported=true;w.added=now-i;
       w.tastings=it.tastings.map(function(t){return Object.assign({id:uid()},t);});
       if(it.want){w.status='want';if(it.seen)w.seen=it.seen;}
+      else if(it.qty)w.qty=it.qty;
       S.wines.unshift(w);added++;
     });
-    persist();S.imp=null;S.q='';S.type='all';
+    persist();S.imp=null;S.q='';S.type='all';if(R.bottles){S.shelf='coll';saveView();}
     toast('Imported '+added+(added===1?' wine':' wines')+(R.newTastings?' and '+R.newTastings+(R.newTastings===1?' tasting':' tastings'):'')+'.',6000);
     nav('list');
   },
@@ -1595,6 +1698,10 @@ function onBind(e){
     S.q=t.value;
     var box=document.getElementById('results');
     if(box)box.innerHTML=resultsHtml();
+    return;
+  }
+  if(t.hasAttribute&&t.hasAttribute('data-dsearch')){
+    if(S.drink){S.drink.q=t.value;var db=document.getElementById('dresults');if(db)db.innerHTML=drinkListHtml();}
     return;
   }
   var path=t.getAttribute&&t.getAttribute('data-bind');
