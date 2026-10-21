@@ -97,6 +97,9 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:.8}
 .mapbox{position:relative;width:100%;height:340px;overflow:hidden;border-radius:12px;border:1px solid var(--line);background:#d9e2e8}
 .mapgrid{position:absolute;left:50%;top:50%}
 .mtile{position:absolute;display:block;max-width:none}
+.mdot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#fff;border:2px solid #4a3a44;box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+.mlab{position:absolute;white-space:nowrap;font:600 11px/16px var(--font-body);color:#2b1f27;background:rgba(255,255,255,.85);padding:0 4px;border-radius:4px;pointer-events:none}
+.mlab-sel{background:var(--accent);color:#fff;font-size:12px}
 .mappin{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}
 .stiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px}
@@ -1069,6 +1072,8 @@ function geoInit(){
   GEO_CEN_RAW.split(';').forEach(function(r){var a=r.split('|');GEO_C[a[0]]={lat:+a[1],lon:+a[2],z:+a[3]};});
   var cm={};REGION_KEYS.forEach(function(x){cm[x[0]]=x[1];});GEO.forEach(function(g){g.c=cm[g.k]||'';});
 }
+var GEO_NAMES={'medoc':'Médoc','haut medoc':'Haut-Médoc','saint emilion':'Saint-Émilion','saint estephe':'Saint-Estèphe','saint julien':'Saint-Julien','pessac leognan':'Pessac-Léognan','entre deux mers':'Entre-Deux-Mers','cote d or':'Côte d’Or','cote de nuits':'Côte de Nuits','cote de beaune':'Côte de Beaune','chateauneuf du pape':'Châteauneuf-du-Pape','cote rotie':'Côte-Rôtie','crozes hermitage':'Crozes-Hermitage','rias baixas':'Rías Baixas','rias biaxas':'Rías Baixas','penedes':'Penedès','wurttemberg':'Württemberg','dao':'Dão','setubal':'Setúbal','gevrey chambertin':'Gevrey-Chambertin','nuits saint georges':'Nuits-Saint-Georges','puligny montrachet':'Puligny-Montrachet','chassagne montrachet':'Chassagne-Montrachet','pouilly fuisse':'Pouilly-Fuissé','pouilly fume':'Pouilly-Fumé','montepulciano d abruzzo':'Montepulciano d’Abruzzo','barbera d alba':'Barbera d’Alba','dolcetto d alba':'Dolcetto d’Alba','valle d aosta':'Valle d’Aosta','corbieres':'Corbières','faugeres':'Faugères','cataluna':'Cataluña','valdepenas':'Valdepeñas','montilla moriles':'Montilla-Moriles','oltrepo pavese':'Oltrepò Pavese','lujan de cuyo':'Luján de Cuyo','hawke s bay':'Hawke’s Bay','hawkes bay':'Hawke’s Bay','alto adige':'Alto Adige','emilia romagna':'Emilia-Romagna'};
+function geoLabel(k){return GEO_NAMES[k]||k.replace(/\b[a-z]/g,function(c){return c.toUpperCase();});}
 function geoText(v){return ' '+norm(v).replace(/[^a-z0-9]+/g,' ').trim()+' ';}
 function mapFor(w){
   geoInit();
@@ -1081,10 +1086,34 @@ function mapFor(w){
       if(country&&g.c&&norm(g.c)!==country)continue;
       if(!best||g.z>best.z||(g.z===best.z&&g.k.length>best.k.length))best=g;
     }
-    if(best)return {lat:best.lat,lon:best.lon,z:best.z,label:best.k.replace(/\b[a-z]/g,function(c){return c.toUpperCase();}),precise:true};
+    if(best)return {lat:best.lat,lon:best.lon,z:best.z,label:geoLabel(best.k),key:best.k,precise:true};
   }
   var c=GEO_C[country];
   return c?{lat:c.lat,lon:c.lon,z:c.z,label:impCountry(w.country),precise:false}:null;
+}
+function mapXY(lat,lon,z){var n=Math.pow(2,z)*256,r=lat*Math.PI/180;return {x:(lon+180)/360*n,y:(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n};}
+function mapMarkers(m,z){
+  geoInit();
+  var c=mapXY(m.lat,m.lon,z),seen={},list=[],boxes=[],out='';
+  GEO.forEach(function(g){
+    if(g.k===m.key)return;
+    var k=g.lat+','+g.lon;if(seen[k]||(g.lat===m.lat&&g.lon===m.lon))return;
+    var q=mapXY(g.lat,g.lon,z),dx=q.x-c.x,dy=q.y-c.y;
+    if(Math.abs(dx)>175||Math.abs(dy)>158)return;
+    seen[k]=1;list.push({g:g,dx:dx,dy:dy,pr:-Math.abs(g.z-z)});
+  });
+  list.sort(function(a,b){return b.pr-a.pr;});
+  function hit(r){return boxes.some(function(b){return r.x<b.x+b.w&&r.x+r.w>b.x&&r.y<b.y+b.h&&r.y+r.h>b.y;});}
+  boxes.push({x:-14,y:-14,w:150,h:28});
+  list.slice(0,60).forEach(function(it){
+    if(out.split('mlab').length>26)return;
+    var name=geoLabel(it.g.k),w=name.length*6.2+10,left=it.dx>70,r={x:left?it.dx-w-5:it.dx+5,y:it.dy-8,w:w,h:16};
+    if(hit(r))return;
+    boxes.push(r);
+    out+='<span class="mdot" style="left:calc(50% + '+it.dx.toFixed(1)+'px);top:calc(50% + '+it.dy.toFixed(1)+'px)"></span>'+
+      '<span class="mlab" style="left:calc(50% + '+(r.x).toFixed(1)+'px);top:calc(50% + '+r.y.toFixed(1)+'px)">'+esc(name)+'</span>';
+  });
+  return out;
 }
 function mapTiles(lat,lon,z){
   var n=Math.pow(2,z),latr=lat*Math.PI/180;
@@ -1105,9 +1134,9 @@ function mapView(){
   return '<div class="wrap"><button class="back" data-act="go-detail-back">← Back</button>'+
     '<h1 class="h2">Where it comes from</h1>'+
     '<p class="muted"><strong>'+esc(w.name)+'</strong>'+(where?' · '+flagHtml(w.country)+esc(where):'')+'</p>'+
-    '<div class="mapbox" role="img" aria-label="Map showing '+esc(m.label)+'"><div class="mapgrid" style="width:768px;height:768px;transform:translate(-'+T.px.toFixed(1)+'px,-'+T.py.toFixed(1)+'px)">'+T.html+'</div><span class="mappin" aria-hidden="true"></span></div>'+
-    '<div class="trow" style="justify-content:center"><button class="btn" data-act="map-zoom" data-d="-1"'+(z<=3?' disabled':'')+' aria-label="Zoom out">− Zoom out</button><button class="btn" data-act="map-zoom" data-d="1"'+(z>=12?' disabled':'')+' aria-label="Zoom in">+ Zoom in</button></div>'+
-    '<p class="muted" style="font-size:13px">'+(m.precise?'Approximate position of '+esc(m.label)+'.':'Showing the country only. Add a region or appellation to the wine to see it more precisely.')+' Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.</p></div>';
+    '<div class="mapbox" role="img" aria-label="Map showing '+esc(m.label)+'"><div class="mapgrid" style="width:768px;height:768px;transform:translate(-'+T.px.toFixed(1)+'px,-'+T.py.toFixed(1)+'px)">'+T.html+'</div>'+(S.map.names&&m.precise?mapMarkers(m,z):'')+'<span class="mappin" aria-hidden="true"></span><span class="mlab mlab-sel" style="left:calc(50% + 12px);top:calc(50% - 10px)">'+esc(m.label)+'</span></div>'+
+    '<div class="trow" style="justify-content:center"><button class="btn" data-act="map-zoom" data-d="-1"'+(z<=3?' disabled':'')+' aria-label="Zoom out">− Zoom out</button><button class="btn" data-act="map-zoom" data-d="1"'+(z>=12?' disabled':'')+' aria-label="Zoom in">+ Zoom in</button>'+(m.precise?'<button class="btn" data-act="map-names">'+(S.map.names?'Hide names':'Show nearby areas')+'</button>':'')+'</div>'+
+    '<p class="muted" style="font-size:13px">'+(m.precise?'Approximate position of '+esc(m.label)+'. Dots mark nearby wine areas, by position only, not their borders.':'Showing the country only. Add a region or appellation to the wine to see it more precisely.')+' Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.</p></div>';
 }
 
 /* ---- Stats ---- */
@@ -1688,7 +1717,8 @@ var ACT={
     nav('list');
   },
   'go-stats':function(){nav('stats');},
-  'show-map':function(){var w=getSel();if(!w||!mapFor(w))return;S.map={id:w.id,dz:0};nav('map');},
+  'show-map':function(){var w=getSel();if(!w||!mapFor(w))return;S.map={id:w.id,dz:0,names:true};nav('map');},
+  'map-names':function(){if(!S.map)return;S.map.names=!S.map.names;render(true);},
   'map-zoom':function(el){if(!S.map)return;S.map.dz+=(+el.dataset.d);render(true);},
   'go-detail-back':function(){nav('detail');},
   'stat-go':function(el){
