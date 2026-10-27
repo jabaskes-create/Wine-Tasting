@@ -2087,6 +2087,19 @@ function notifyJoin(u){
     }).catch(function(){});
   }catch(e){}
 }
+function reportLastSeen(u){
+  /* Records "last seen" in the central app-activity tracker. At most once per 6 hours per person. */
+  try{
+    var key='lastSeenPing_'+u.uid;
+    var last=Number(localStorage.getItem(key)||0);
+    if(Date.now()-last<6*60*60*1000)return;
+    u.getIdToken().then(function(t){
+      return fetch('https://app-activity.vercel.app/api/ping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});
+    }).then(function(r){
+      if(r.ok)try{localStorage.setItem(key,String(Date.now()));}catch(e){}
+    }).catch(function(){});
+  }catch(e){}
+}
 function importDone(){try{localStorage.setItem(IMPORT_FLAG,'1');}catch(e){}}
 function importCard(){
   var n=S.importLocal?S.importLocal.length:0;
@@ -2191,6 +2204,7 @@ function onUser(u){
     S.a.pw='';S.cloud='auth';render(false);return;
   }
   S.user=u;S.cloud='loading';render(false);
+  reportLastSeen(u);
   loadCloud(u.uid).then(function(){
     C.on=true;
     var left=localLeftovers();
