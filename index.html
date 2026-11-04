@@ -980,6 +980,8 @@ function onBatchPhotos(input){
   var B=S.batch;if(!B||bBusy())return;
   var files=Array.prototype.slice.call(input.files||[]);input.value='';
   if(!files.length)return;
+  /* Some phones hand the files back in no particular order, so line them up by when each photo was taken (then by file name). */
+  files.sort(function(a,b){return ((a.lastModified||0)-(b.lastModified||0))||(a.name<b.name?-1:(a.name>b.name?1:0));});
   var room=B_MAX_PHOTOS-bPhotoCount();
   if(room<=0){toast('That is the most photos for one batch ('+B_MAX_PHOTOS+'). Read these first, then start the next batch.',6000);return;}
   if(files.length>room){files=files.slice(0,room);toast('Only the first '+room+' photos were added. '+B_MAX_PHOTOS+' is the most for one batch.',6000);}
@@ -1142,7 +1144,7 @@ function batchView(){
     ((!busy&&okIn)?'<button class="btn '+(todo?'':'btn-primary ')+'wide" data-act="b-save">Add '+bottlesText(bottles)+' to collection</button>':'')+'</div>';
   return '<div class="wrap"><button class="back" data-act="b-back">'+leave+'</button>'+
     '<h1 class="h2">Scan many bottles</h1>'+scanModes()+
-    '<p class="muted">Choose all your photos at once. Front and back of each bottle are paired in the order you pick them, so pick the front, then the back, bottle after bottle. Check the pairs, fix any that landed wrong, then read them. Up to '+B_MAX_PHOTOS+' photos per batch.</p>'+
+    '<p class="muted">Choose all your photos at once. Photos are lined up by the time you took them and paired two at a time, so shoot the front, then the back, bottle after bottle. Check the pairs, fix any that landed wrong, then read them. Up to '+B_MAX_PHOTOS+' photos per batch.</p>'+
     picker+per+
     (B.groups.length?'<ul class="list">'+B.groups.map(function(g,i){return bCard(g,i,B);}).join('')+'</ul>':'')+
     actions+'</div>';
