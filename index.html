@@ -252,6 +252,8 @@ dd .v{overflow-wrap:anywhere;min-width:0}
 .bhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .bgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .bfail{color:var(--danger);font-size:14px}
+.photos li.psel{outline:3px solid var(--accent);outline-offset:1px}
+.bitem .photos button.thumbbtn{cursor:pointer}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:420px){
@@ -976,21 +978,70 @@ function shrinkPair(file){
     im.src=url;
   });
 }
+/* When a photo was taken, read from the camera data inside the JPEG. Returns 0 if it is not there. */
+function bExifRead(v,base){
+  var le=v.getUint16(base)===0x4949;
+  function u16(o){return v.getUint16(o,le);}
+  function u32(o){return v.getUint32(o,le);}
+  function str(o,n){var s='',i,c;for(i=0;i<n;i++){c=v.getUint8(o+i);if(!c)break;s+=String.fromCharCode(c);}return s;}
+  function scan(ifd,want){
+    var out={},cnt=u16(base+ifd),i,e,tag;
+    for(i=0;i<cnt;i++){e=base+ifd+2+i*12;tag=u16(e);if(want.indexOf(tag)!==-1)out[tag]={n:u32(e+4),o:e+8};}
+    return out;
+  }
+  function ascii(f){return str(f.n>4?base+u32(f.o):f.o,f.n);}
+  var i0=scan(u32(base+4),[0x0132,0x8769]),ex={},s='',sub='';
+  if(i0[0x8769])ex=scan(u32(i0[0x8769].o),[0x9003,0x9291]);
+  if(ex[0x9003])s=ascii(ex[0x9003]);else if(i0[0x0132])s=ascii(i0[0x0132]);
+  if(ex[0x9291])sub=ascii(ex[0x9291]);
+  var m=/^(\d{4}):(\d\d):(\d\d)[ T](\d\d):(\d\d):(\d\d)/.exec(s);
+  if(!m)return 0;
+  var ms=sub?Math.round(parseFloat('0.'+sub.replace(/\D/g,'0'))*1000):0;
+  return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime()+(ms||0);
+}
+function bExifTime(file){
+  return new Promise(function(res){
+    var fr=new FileReader();
+    fr.onerror=function(){res(0);};
+    fr.onload=function(){
+      var t=0;
+      try{
+        var v=new DataView(fr.result),n=v.byteLength,p=2,mk,len;
+        if(n>4&&v.getUint16(0)===0xFFD8){
+          while(p+10<n){
+            mk=v.getUint16(p);len=v.getUint16(p+2);
+            if(mk===0xFFE1&&v.getUint32(p+4)===0x45786966){t=bExifRead(v,p+10);break;}
+            if(mk<0xFF00||mk===0xFFDA)break;
+            p+=2+len;
+          }
+        }
+      }catch(e){t=0;}
+      res(t||0);
+    };
+    try{fr.readAsArrayBuffer(file.slice(0,262144));}catch(e){res(0);}
+  });
+}
 function onBatchPhotos(input){
   var B=S.batch;if(!B||bBusy())return;
   var files=Array.prototype.slice.call(input.files||[]);input.value='';
   if(!files.length)return;
-  /* Some phones hand the files back in no particular order, so line them up by when each photo was taken (then by file name). */
-  files.sort(function(a,b){return ((a.lastModified||0)-(b.lastModified||0))||(a.name<b.name?-1:(a.name>b.name?1:0));});
   var room=B_MAX_PHOTOS-bPhotoCount();
   if(room<=0){toast('That is the most photos for one batch ('+B_MAX_PHOTOS+'). Read these first, then start the next batch.',6000);return;}
   if(files.length>room){files=files.slice(0,room);toast('Only the first '+room+' photos were added. '+B_MAX_PHOTOS+' is the most for one batch.',6000);}
   B.prepping=files.length;B.prepDone=0;render(true);
   var photos=[],tok=S.tok;
   function live(){return S.batch===B&&S.tok===tok;}
-  files.reduce(function(p,f){
-    return p.then(function(){return live()?shrinkPair(f):null;}).then(function(r){if(!r||!live())return;photos.push(r);B.prepDone++;bRefresh();});
-  },Promise.resolve()).then(function(){
+  /* Phones can hand the files back in any order, so line them up by when each was taken: the time stored in the photo, else the file date, else the name. */
+  Promise.all(files.map(bExifTime)).then(function(times){
+    if(!live())return;
+    var withTime=times.filter(Boolean).length;
+    var rows=files.map(function(f,i){return {f:f,t:times[i]||f.lastModified||0};});
+    rows.sort(function(a,b){return (a.t-b.t)||(a.f.name<b.f.name?-1:(a.f.name>b.f.name?1:0));});
+    if(!withTime)toast('These photos do not say when they were taken, so the pairs may be off. Check each pair; tap one photo, then another, to swap them.',9000);
+    return rows.map(function(r){return r.f;}).reduce(function(p,f){
+      return p.then(function(){return live()?shrinkPair(f):null;}).then(function(r){if(!r||!live())return;photos.push(r);B.prepDone++;bRefresh();});
+    },Promise.resolve());
+  }).then(function(){
     if(!live())return;
     B.groups=B.groups.concat(bMakeGroups(photos,B.per));B.prepping=0;render(true);
   });
@@ -1100,7 +1151,13 @@ function bInput(g,k,label){
 function bCard(g,i,B){
   var busy=B.running||B.prepping;
   var num='Bottle '+(i+1)+' · '+g.photos.length+(g.photos.length===1?' photo':' photos');
-  var ph='<ul class="photos sm">'+g.photos.map(function(p,j){return '<li><img src="'+p.t+'" alt="Photo '+(j+1)+' of bottle '+(i+1)+'"></li>';}).join('')+'</ul>';
+  var canSwap=!busy&&(g.status==='wait'||g.status==='fail');
+  var ph='<ul class="photos sm">'+g.photos.map(function(p,j){
+    var img='<img src="'+p.t+'" alt="Photo '+(j+1)+' of bottle '+(i+1)+'">';
+    if(!canSwap)return '<li>'+img+'</li>';
+    var sel=!!(B.sel&&B.sel.id===g.id&&B.sel.i===j);
+    return '<li class="'+(sel?'psel':'')+'"><button class="thumbbtn" data-act="b-pick" data-id="'+g.id+'" data-i="'+j+'" aria-pressed="'+sel+'" aria-label="Photo '+(j+1)+' of bottle '+(i+1)+'. Tap, then tap another photo to swap them.">'+img+'</button></li>';
+  }).join('')+'</ul>';
   if(g.status==='busy')return '<li class="card bitem"><div class="bhead"><span class="tiny">'+num+'</span></div>'+ph+'<div class="reading" role="status"><span class="bar"></span>Reading…</div></li>';
   if(g.status==='wait'||g.status==='fail'){
     return '<li class="card bitem"><div class="bhead"><span class="tiny">'+num+(g.status==='wait'?' · waiting':'')+'</span></div>'+ph+
@@ -1127,6 +1184,7 @@ function bCard(g,i,B){
 }
 function batchView(){
   var B=S.batch,busy=B.running||B.prepping;
+  if(B.sel&&!bGroup(B.sel.id))B.sel=null;
   var todo=0,okIn=0,bottles=0;
   B.groups.forEach(function(g){
     if(g.status==='wait'||g.status==='fail')todo++;
@@ -1144,7 +1202,7 @@ function batchView(){
     ((!busy&&okIn)?'<button class="btn '+(todo?'':'btn-primary ')+'wide" data-act="b-save">Add '+bottlesText(bottles)+' to collection</button>':'')+'</div>';
   return '<div class="wrap"><button class="back" data-act="b-back">'+leave+'</button>'+
     '<h1 class="h2">Scan many bottles</h1>'+scanModes()+
-    '<p class="muted">Choose all your photos at once. Photos are lined up by the time you took them and paired two at a time, so shoot the front, then the back, bottle after bottle. Check the pairs, fix any that landed wrong, then read them. Up to '+B_MAX_PHOTOS+' photos per batch.</p>'+
+    '<p class="muted">Choose all your photos at once. Photos are lined up by when you took them and paired two at a time. Check the pairs below. If one is wrong, tap a photo, then tap the photo it should swap places with. Then read them. Up to '+B_MAX_PHOTOS+' photos per batch.</p>'+
     picker+per+
     (B.groups.length?'<ul class="list">'+B.groups.map(function(g,i){return bCard(g,i,B);}).join('')+'</ul>':'')+
     actions+'</div>';
@@ -1972,7 +2030,7 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   'b-per':function(el){
     var B=S.batch;if(!B||bBusy())return;
     var per=el.dataset.v==='1'?1:2;if(per===B.per)return;
-    B.per=per;
+    B.per=per;B.sel=null;
     var flat=[],first=-1,out=[];
     B.groups.forEach(function(g){if(g.status==='wait'){if(first<0)first=out.length;flat=flat.concat(g.photos);}else out.push(g);});
     if(first>=0)Array.prototype.splice.apply(out,[first,0].concat(bMakeGroups(flat,per)));
@@ -1983,18 +2041,30 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     var i=bIndex(el.dataset.id),g=B.groups[i],nx=B.groups[i+1];
     if(!g||!nx||g.photos.length+nx.photos.length>3)return;
     if(!(g.status==='wait'||g.status==='fail')||!(nx.status==='wait'||nx.status==='fail'))return;
-    g.photos=g.photos.concat(nx.photos);g.status='wait';g.err='';B.groups.splice(i+1,1);render(true);
+    B.sel=null;g.photos=g.photos.concat(nx.photos);g.status='wait';g.err='';B.groups.splice(i+1,1);render(true);
   },
   'b-split':function(el){
     var B=S.batch;if(!B||bBusy())return;
     var i=bIndex(el.dataset.id),g=B.groups[i];
     if(!g||g.photos.length<2||!(g.status==='wait'||g.status==='fail'))return;
-    Array.prototype.splice.apply(B.groups,[i,1].concat(bMakeGroups(g.photos,1)));render(true);
+    B.sel=null;Array.prototype.splice.apply(B.groups,[i,1].concat(bMakeGroups(g.photos,1)));render(true);
   },
   'b-rm':function(el){
     var B=S.batch;if(!B||bBusy())return;
     var i=bIndex(el.dataset.id);if(i<0)return;
-    B.groups.splice(i,1);render(true);
+    B.sel=null;B.groups.splice(i,1);render(true);
+  },
+  'b-pick':function(el){
+    var B=S.batch;if(!B||bBusy())return;
+    var g=bGroup(el.dataset.id),j=+el.dataset.i,s=B.sel;
+    if(!g||!g.photos[j])return;
+    if(!s){B.sel={id:g.id,i:j};render(true);return;}
+    if(s.id===g.id&&s.i===j){B.sel=null;render(true);return;}
+    var a=bGroup(s.id);B.sel=null;
+    if(!a||!a.photos[s.i]){render(true);return;}
+    var tmp=a.photos[s.i];a.photos[s.i]=g.photos[j];g.photos[j]=tmp;
+    a.status='wait';a.err='';g.status='wait';g.err='';
+    render(true);
   },
   'b-inc':function(el){var g=bGroup(el.dataset.id);if(!g)return;g.include=!!el.checked;render(true);},
   'b-more':function(el){var g=bGroup(el.dataset.id);if(!g)return;g.more=!g.more;render(true);},
