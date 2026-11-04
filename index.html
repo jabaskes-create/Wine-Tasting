@@ -247,6 +247,11 @@ dd .v{overflow-wrap:anywhere;min-width:0}
 .tmeta{font:400 12px var(--font-mono);color:var(--muted);overflow-wrap:anywhere}
 .tnote{overflow-wrap:anywhere}
 
+.shelf4 .shbtn{font-size:12.5px;padding:9px 2px}
+.bitem{list-style:none}
+.bhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.bfail{color:var(--danger);font-size:14px}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:420px){
@@ -688,7 +693,7 @@ function scanView(){
   var actions=S.scanning?
     '<div class="reading" role="status"><span class="bar"></span>'+(recMode?'Reading receipt…':(menuMode?'Reading wine list…':'Reading label…'))+'</div>':
     (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
-  var modes='<div class="shelf" role="group" aria-label="What are you scanning">'+[['label','Bottle label'],['menu','Wine list'],['receipt','Receipt']].map(function(m){var on=S.scanMode===m[0];return '<button class="shbtn'+(on?' on':'')+'" data-act="scan-mode" data-v="'+m[0]+'" aria-pressed="'+on+'">'+m[1]+'</button>';}).join('')+'</div>';
+  var modes=scanModes();
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">'+(drinkMode?'Drink a bottle':(recMode?'Scan a receipt':(menuMode?'Scan a wine list':'Scan a label')))+'</h1>'+(drinkMode?'':modes)+
     (drinkMode?'<p class="muted">Photograph the label of the bottle you are opening. It finds the wine in your collection, then you say how many you are drinking.</p>':recMode?'<p class="muted">Photograph a wine shop receipt or order list, flat and in good light. You check every line, and change names or quantities, before anything is added to your Collection. Up to 4 photos.</p>':menuMode?'<p class="muted">Photograph each page of the list, close enough to read the small print. Up to 4 photos. It only reads what is printed; nothing is looked up until you ask.</p>':'<p class="muted">Photograph the front label. Add the back label too if it lists grapes or alcohol. Up to 3 photos.</p>')+
@@ -786,6 +791,7 @@ function render(keep){
   if(S.view==='scan')html=scanView();
   else if(S.view==='review'&&S.draft)html=reviewView();
   else if(S.view==='detail')html=detailView();
+  else if(S.view==='batch'&&S.batch)html=batchView();
   else if(S.view==='menu'&&S.menu)html=menuView();
   else if(S.view==='drink'&&S.drink)html=drinkView();
   else if(S.view==='stats')html=statsView();
@@ -799,10 +805,10 @@ function render(keep){
 /* ---- Back button ----
    Every screen change is recorded in the browser history, so the phone's Back button steps back through the app
    instead of leaving it. VS lists the screen at each history position, HI is the current position. */
-var VS=['list'],HI=0,TRANSIENT={scan:1,review:1};
+var VS=['list'],HI=0,TRANSIENT={scan:1,review:1,batch:1};
 try{history.replaceState({k:0},'');}catch(e){}
 function histReset(){VS=['list'];HI=0;try{history.replaceState({k:0},'');}catch(e){}}
-function leaveClean(){S.tok++;S.scanning=false;S.draft=null;clearPhotos();S.dup=null;S.addOpen=false;S.imp=null;}
+function leaveClean(){S.batch=null;S.tok++;S.scanning=false;S.draft=null;clearPhotos();S.dup=null;S.addOpen=false;S.imp=null;}
 function nav(v){
   var cur=S.view;
   S.confirm='';S.lb=null;
@@ -830,6 +836,7 @@ window.addEventListener('popstate',function(e){
   if(v==='detail'&&!getSel())v='list';
   if(v==='review'&&!S.draft)v='list';
   if(v==='import'&&!S.imp)v='list';
+  if(v==='batch'&&!S.batch)v='list';
   if(v===S.view)return;
   if(TRANSIENT[S.view]||S.view==='import'||v==='list')leaveClean();
   S.view=v;S.confirm='';render(false);window.scrollTo(0,0);
@@ -925,6 +932,221 @@ function startScan(){
     });
 }
 
+
+/* ---- Batch scan: many bottles at once, front and back grouped ---- */
+var B_MAX_PHOTOS=80,B_PAR=3;
+function scanModes(){
+  var cur=S.view==='batch'?'batch':S.scanMode;
+  return '<div class="shelf shelf4" role="group" aria-label="What are you scanning">'+[['label','Bottle label'],['batch','Batch'],['menu','Wine list'],['receipt','Receipt']].map(function(m){var on=cur===m[0];return '<button class="shbtn'+(on?' on':'')+'" data-act="scan-mode" data-v="'+m[0]+'" aria-pressed="'+on+'">'+m[1]+'</button>';}).join('')+'</div>';
+}
+function newBatch(){return {groups:[],per:2,running:false,prepping:0,prepDone:0,abortRun:false,pending:false,total:0,done:0,fatal:''};}
+function bGroup(id){return S.batch?S.batch.groups.filter(function(g){return g.id===id;})[0]:null;}
+function bIndex(id){var i;if(!S.batch)return -1;for(i=0;i<S.batch.groups.length;i++)if(S.batch.groups[i].id===id)return i;return -1;}
+function bPhotoCount(){return S.batch?S.batch.groups.reduce(function(n,g){return n+g.photos.length;},0):0;}
+function bMakeGroups(photos,per){
+  var out=[],i;
+  for(i=0;i<photos.length;i+=per)out.push({id:uid(),photos:photos.slice(i,i+per),status:'wait',err:'',wine:null,src:null,orig:null,unsure:[],qty:'1',include:true,more:false});
+  return out;
+}
+function bBusy(){return !!(S.batch&&(S.batch.running||S.batch.prepping));}
+/* Redraw, but never while the person is typing in a field: wait until they leave it. */
+function bRefresh(){
+  var B=S.batch;if(!B||S.view!=='batch')return;
+  var a=document.activeElement;
+  if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&app.contains(a)){B.pending=true;return;}
+  render(true);
+}
+function shrinkPair(file){
+  return new Promise(function(res){
+    var url;
+    try{url=URL.createObjectURL(file);}catch(e){res({t:NOPREVIEW,f:null});return;}
+    var im=new Image();
+    im.onerror=function(){URL.revokeObjectURL(url);res({t:NOPREVIEW,f:null});};
+    im.onload=function(){
+      function mk(max,q){
+        var k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');
+        c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+        return c.toDataURL('image/jpeg',q);
+      }
+      var r;
+      try{r={t:mk(520,0.72),f:mk(1400,0.8)};}catch(e){r={t:NOPREVIEW,f:null};}
+      URL.revokeObjectURL(url);res(r);
+    };
+    im.src=url;
+  });
+}
+function onBatchPhotos(input){
+  var B=S.batch;if(!B||bBusy())return;
+  var files=Array.prototype.slice.call(input.files||[]);input.value='';
+  if(!files.length)return;
+  var room=B_MAX_PHOTOS-bPhotoCount();
+  if(room<=0){toast('That is the most photos for one batch ('+B_MAX_PHOTOS+'). Read these first, then start the next batch.',6000);return;}
+  if(files.length>room){files=files.slice(0,room);toast('Only the first '+room+' photos were added. '+B_MAX_PHOTOS+' is the most for one batch.',6000);}
+  B.prepping=files.length;B.prepDone=0;render(true);
+  var photos=[],tok=S.tok;
+  function live(){return S.batch===B&&S.tok===tok;}
+  files.reduce(function(p,f){
+    return p.then(function(){return live()?shrinkPair(f):null;}).then(function(r){if(!r||!live())return;photos.push(r);B.prepDone++;bRefresh();});
+  },Promise.resolve()).then(function(){
+    if(!live())return;
+    B.groups=B.groups.concat(bMakeGroups(photos,B.per));B.prepping=0;render(true);
+  });
+}
+function batchReadOne(g,examples,live,B){
+  var imgs=g.photos.map(function(p){return p.f;}).filter(Boolean);
+  if(!imgs.length){g.status='fail';g.err='These photos could not be prepared. Remove them and add them again.';return Promise.resolve();}
+  function attempt(n){
+    var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},60000);
+    var headers={'Content-Type':'application/json'};
+    if(S.pass)headers['x-passcode']=S.pass;
+    return idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples}),signal:ctl.signal});})
+      .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
+      .catch(function(){return {status:0,j:{}};})
+      .then(function(x){
+        clearTimeout(timer);
+        var again=x.status===0||x.status===429||(x.status>=500&&x.status!==503);
+        if(again&&n<2&&live())return new Promise(function(r){setTimeout(r,1500*(n+1));}).then(function(){return attempt(n+1);});
+        return x;
+      });
+  }
+  return attempt(0).then(function(x){
+    if(!live())return;
+    if(x.status===200&&x.j&&x.j.wine){
+      var d=pick(x.j.wine,FIELD_KEYS),src={},orig;
+      FIELD_KEYS.forEach(function(k){src[k]=d[k]?'label':'none';});
+      if(TYPES.indexOf(d.type)===-1){d.type='red';src.type='none';}
+      orig=pick(x.j.wine,FIELD_KEYS);orig.type=d.type;
+      g.unsure=(Array.isArray(x.j.unsure)?x.j.unsure:[]).filter(function(k){return FIELD_KEYS.indexOf(k)!==-1&&d[k];});
+      if(src.type==='none'&&g.unsure.indexOf('type')===-1)g.unsure.push('type');
+      g.wine=d;g.src=src;g.orig=orig;g.status='ok';g.err='';
+      return;
+    }
+    if(x.status===401){B.fatal=S.user?'Your sign-in expired. Reload the page and sign in again.':'Scan passcode needed or wrong. Set it under Tools on the Cellar page.';B.abortRun=true;g.status='wait';return;}
+    if(x.status===403){B.fatal=x.j&&x.j.error==='unverified'?'Verify your email first. Check your inbox for the link, then tap I verified it on the Cellar page.':'This account is not approved to scan labels yet. Ask the owner to add your email.';B.abortRun=true;g.status='wait';return;}
+    if(x.status===503||x.status===404){B.fatal='Label reading is not switched on yet.';B.abortRun=true;g.status='wait';return;}
+    g.status='fail';
+    g.err=x.status===422?'No wine label found in these photos.':(x.status===413?'These photos are too large to send.':(x.status===0?'Could not reach the scan service.':'Could not read this one (status '+x.status+').'));
+  });
+}
+function batchRun(){
+  var B=S.batch;if(!B||bBusy())return;
+  var q=B.groups.filter(function(g){return g.status==='wait'||g.status==='fail';});
+  if(!q.length)return;
+  q.forEach(function(g){g.status='wait';g.err='';});
+  B.running=true;B.abortRun=false;B.total=q.length;B.done=0;B.fatal='';
+  var tok=++S.tok,i=0,active=0,examples=buildExamples(),n;
+  function live(){return S.batch===B&&S.tok===tok;}
+  function finish(){
+    B.running=false;render(true);
+    var bad=B.groups.filter(function(g){return g.status==='fail';}).length;
+    if(B.fatal){toast(B.fatal,9000);B.fatal='';}
+    else toast('Read '+(B.done-bad)+' of '+B.total+(bad?'. '+bad+' could not be read.':'. Check each one, then add them.'),6000);
+  }
+  function next(){
+    if(!live())return;
+    if(B.abortRun||i>=q.length){if(active===0)finish();return;}
+    var g=q[i++];active++;g.status='busy';bRefresh();
+    batchReadOne(g,examples,live,B).then(function(){active--;B.done++;if(!live())return;bRefresh();next();});
+  }
+  render(true);
+  for(n=0;n<B_PAR;n++)next();
+}
+function batchSave(){
+  var B=S.batch;if(!B||bBusy())return;
+  var rows=B.groups.filter(function(g){return g.status==='ok'&&g.include;});
+  var ready=rows.filter(function(g){return (g.wine.name||'').trim()||(g.wine.producer||'').trim();});
+  if(!ready.length){toast(rows.length?'Give the ticked bottles a name or a producer first.':'Nothing to add yet.');return;}
+  var skipped=rows.length-ready.length,newW=0,more=0,bottles=0;
+  ready.slice().reverse().forEach(function(g){
+    var d=pick(g.wine,FIELD_KEYS);
+    FIELD_KEYS.forEach(function(k){d[k]=(d[k]||'').trim();});
+    if(!d.name&&d.producer)d.name=d.producer;
+    var n=clampQty(g.qty),dup=findDup(d);
+    bottles+=n;
+    if(dup){dup.qty=qtyOf(dup)+n;delete dup.status;more++;return;}
+    var w=pick(d,FIELD_KEYS);
+    w.id=uid();w.src={};
+    FIELD_KEYS.forEach(function(k){
+      var now=w[k],was=g.orig[k]||'';
+      w.src[k]=now?(now===was?(g.src[k]==='none'?'none':'label'):(was?'edited':'manual')):'none';
+    });
+    w.photos=g.photos.map(function(p){return p.t;});
+    w.notes='';w.sampleKey='';w.research=null;w.added=Date.now();
+    w.scanned=g.orig;w.fixed=FIELD_KEYS.some(function(k){return (g.orig[k]||'')!==(w[k]||'');});
+    w.qty=n;w.tastings=[];
+    S.wines.unshift(w);newW++;
+  });
+  B.groups=B.groups.filter(function(g){return ready.indexOf(g)===-1;});
+  persist();S.shelf='coll';saveView();
+  toast('Added '+bottlesText(bottles)+': '+newW+(newW===1?' new wine':' new wines')+(more?', '+more+' added to wines you already had':'')+(skipped?'. '+skipped+' still need a name.':'.'),7000);
+  if(!B.groups.length){S.batch=null;S.tok++;nav('list');}
+  else{render(true);window.scrollTo(0,0);}
+}
+function bBtns(g,i,B){
+  var nx=B.groups[i+1],can=function(x){return x&&(x.status==='wait'||x.status==='fail');};
+  var out='';
+  if(can(g)&&can(nx)&&g.photos.length+nx.photos.length<=3)out+='<button class="btn" data-act="b-join" data-id="'+g.id+'">Join with next</button>';
+  if(can(g)&&g.photos.length>1)out+='<button class="btn" data-act="b-split" data-id="'+g.id+'">Split</button>';
+  out+='<button class="btn btn-ghost" data-act="b-rm" data-id="'+g.id+'">Remove</button>';
+  return '<div class="trow">'+out+'</div>';
+}
+function bInput(g,k,label){
+  var id='b-'+k+'-'+g.id;
+  return '<div class="field"><label class="flabel" for="'+id+'">'+label+(g.unsure.indexOf(k)!==-1?' <span class="tag tag-unsure">Check this</span>':'')+'</label><input id="'+id+'" type="text" data-bk="'+k+'" data-id="'+g.id+'" value="'+esc(g.wine[k])+'" autocomplete="off"></div>';
+}
+function bCard(g,i,B){
+  var busy=B.running||B.prepping;
+  var num='Bottle '+(i+1)+' · '+g.photos.length+(g.photos.length===1?' photo':' photos');
+  var ph='<ul class="photos sm">'+g.photos.map(function(p,j){return '<li><img src="'+p.t+'" alt="Photo '+(j+1)+' of bottle '+(i+1)+'"></li>';}).join('')+'</ul>';
+  if(g.status==='busy')return '<li class="card bitem"><div class="bhead"><span class="tiny">'+num+'</span></div>'+ph+'<div class="reading" role="status"><span class="bar"></span>Reading…</div></li>';
+  if(g.status==='wait'||g.status==='fail'){
+    return '<li class="card bitem"><div class="bhead"><span class="tiny">'+num+(g.status==='wait'?' · waiting':'')+'</span></div>'+ph+
+      (g.status==='fail'?'<p class="bfail" role="alert">'+esc(g.err)+'</p>':'')+(busy?'':bBtns(g,i,B))+'</li>';
+  }
+  var w=g.wine,k=impKeyOf(w),same=-1,j,o;
+  for(j=0;j<i;j++){o=B.groups[j];if(o.status==='ok'&&o.include&&impKeyOf(o.wine)===k&&(w.name||w.producer)){same=j;break;}}
+  var dup=findDup({name:(w.name||'').trim()||(w.producer||'').trim(),producer:w.producer||'',vintage:w.vintage||''});
+  var note=dup?'<p class="notice"><strong>Already '+(isWant(dup)?'on your Want to try list':(qtyOf(dup)?'in your collection (you have '+qtyOf(dup)+')':'in Tasted'))+'.</strong> Adding this will increase the count instead of making a second entry.</p>':
+    (same>=0?'<p class="notice"><strong>Same wine as bottle '+(same+1)+'.</strong> They will be combined.</p>':'');
+  var flagged=g.unsure.map(function(f){var m=FIELDS.filter(function(x){return x.k===f;})[0];return m?m.l:f;});
+  var more='';
+  if(g.more){
+    more='<div class="bgrid">'+
+      '<div class="field"><label class="flabel" for="b-type-'+g.id+'">Type'+(g.unsure.indexOf('type')!==-1?' <span class="tag tag-unsure">Check this</span>':'')+'</label><select id="b-type-'+g.id+'" data-bk="type" data-id="'+g.id+'">'+TYPES.map(function(t){return '<option value="'+t+'"'+(w.type===t?' selected':'')+'>'+TYPE_LABEL[t]+'</option>';}).join('')+'</select></div>'+
+      bInput(g,'grapes','Grapes')+bInput(g,'country','Country')+bInput(g,'region','Region')+bInput(g,'appellation','Appellation')+bInput(g,'abv','Alcohol %')+bInput(g,'volume','Volume (ml)')+'</div>';
+  }
+  return '<li class="card bitem"><div class="bhead"><span class="tiny">'+num+'</span><label class="chk"><input type="checkbox" data-act="b-inc" data-id="'+g.id+'"'+(g.include?' checked':'')+'> Add</label></div>'+ph+
+    (flagged.length?'<p class="muted">Worth a look: '+esc(flagged.join(', '))+'.</p>':'')+note+
+    '<div class="bgrid">'+bInput(g,'name','Wine name')+bInput(g,'producer','Producer')+bInput(g,'vintage','Vintage')+
+    '<div class="field"><label class="flabel" for="b-qty-'+g.id+'">Bottles</label><input id="b-qty-'+g.id+'" type="number" inputmode="numeric" min="1" max="999" data-bk="qty" data-id="'+g.id+'" value="'+esc(String(g.qty))+'"></div></div>'+
+    more+
+    '<div class="trow"><button class="btn" data-act="b-more" data-id="'+g.id+'">'+(g.more?'Fewer details':'More details')+'</button><button class="btn btn-ghost" data-act="b-rm" data-id="'+g.id+'">Remove</button></div></li>';
+}
+function batchView(){
+  var B=S.batch,busy=B.running||B.prepping;
+  var todo=0,okIn=0,bottles=0;
+  B.groups.forEach(function(g){
+    if(g.status==='wait'||g.status==='fail')todo++;
+    if(g.status==='ok'&&g.include&&((g.wine.name||'').trim()||(g.wine.producer||'').trim())){okIn++;bottles+=clampQty(g.qty);}
+  });
+  var okAll=B.groups.filter(function(g){return g.status==='ok';}).length;
+  var leave=S.confirm==='bback'?'Tap again to discard '+okAll+(okAll===1?' bottle':' bottles')+' you have not added':'← Back';
+  var picker=(!busy&&bPhotoCount()<B_MAX_PHOTOS)?'<div class="pick"><input id="batchPick" class="vh batch-in" type="file" accept="image/*" multiple><label class="drop" for="batchPick"><span class="dtitle">'+(B.groups.length?'Add more photos':'Choose photos')+'</span><span class="dsub">Select many at once from your library</span></label></div>':'';
+  var per=(!busy&&todo)?'<div><p class="tiny">Photos per bottle</p><div class="shelf" role="group" aria-label="Photos per bottle">'+[['2','2 (front and back)'],['1','1 (front only)']].map(function(m){var on=String(B.per)===m[0];return '<button class="shbtn'+(on?' on':'')+'" data-act="b-per" data-v="'+m[0]+'" aria-pressed="'+on+'">'+m[1]+'</button>';}).join('')+'</div></div>':'';
+  var status='';
+  if(B.prepping)status='<div class="reading" role="status"><span class="bar"></span>Preparing photos… '+B.prepDone+' of '+B.prepping+'</div>';
+  else if(B.running)status='<div class="reading" role="status"><span class="bar"></span>Reading bottle '+Math.min(B.done+1,B.total)+' of '+B.total+'…</div><button class="btn wide" data-act="b-stop">Stop</button>';
+  var actions='<div class="actions">'+status+
+    ((!busy&&todo)?'<button class="btn btn-primary wide" data-act="b-read">Read '+todo+(todo===1?' bottle':' bottles')+'</button>':'')+
+    ((!busy&&okIn)?'<button class="btn '+(todo?'':'btn-primary ')+'wide" data-act="b-save">Add '+bottlesText(bottles)+' to collection</button>':'')+'</div>';
+  return '<div class="wrap"><button class="back" data-act="b-back">'+leave+'</button>'+
+    '<h1 class="h2">Scan many bottles</h1>'+scanModes()+
+    '<p class="muted">Choose all your photos at once. Front and back of each bottle are paired in the order you pick them, so pick the front, then the back, bottle after bottle. Check the pairs, fix any that landed wrong, then read them. Up to '+B_MAX_PHOTOS+' photos per batch.</p>'+
+    picker+per+
+    (B.groups.length?'<ul class="list">'+B.groups.map(function(g,i){return bCard(g,i,B);}).join('')+'</ul>':'')+
+    actions+'</div>';
+}
 
 /* ---- Wine list ---- */
 function menuKey(x){return norm(x).replace(/[^a-z0-9]/g,'');}
@@ -1727,7 +1949,53 @@ var ACT={
     if(k==='type')S.type=v;else if(k==='country')S.f.country=v;else if(k==='region')S.f.region=v;else if(k==='grape')S.f.grape=v;
     saveView();nav('list');
   },
-  'scan-mode':function(el){if(S.scanning)return;var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');if(m===S.scanMode)return;S.scanMode=m;clearPhotos();render(true);},
+  'scan-mode':function(el){if(S.scanning)return;
+    if(S.view==='batch'){
+      if(el.dataset.v==='batch')return;
+      if(bBusy()){toast('Stop reading first.');return;}
+      if(S.batch&&S.batch.groups.some(function(g){return g.status==='ok';})){toast('Add the bottles you have read to your collection first, or tap Back to discard them.',5000);return;}
+      S.batch=null;S.tok++;S.scanMode=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');clearPhotos();nav('scan');return;
+    }
+    if(el.dataset.v==='batch'){S.batch=newBatch();S.draft=null;clearPhotos();nav('batch');return;}
+var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');if(m===S.scanMode)return;S.scanMode=m;clearPhotos();render(true);},
+  'b-read':function(){batchRun();},
+  'b-save':function(){batchSave();},
+  'b-stop':function(){var B=S.batch;if(!B||!B.running)return;S.tok++;B.running=false;B.groups.forEach(function(g){if(g.status==='busy')g.status='wait';});render(true);toast('Stopped. Bottles already read are kept.');},
+  'b-back':function(){
+    var B=S.batch,n=B?B.groups.filter(function(g){return g.status==='ok';}).length:0;
+    if(bBusy()){toast('Stop reading first.');return;}
+    if(n&&S.confirm!=='bback'){S.confirm='bback';render(true);return;}
+    S.confirm='';S.tok++;S.batch=null;S.draft=null;clearPhotos();nav('list');
+  },
+  'b-per':function(el){
+    var B=S.batch;if(!B||bBusy())return;
+    var per=el.dataset.v==='1'?1:2;if(per===B.per)return;
+    B.per=per;
+    var flat=[],first=-1,out=[];
+    B.groups.forEach(function(g){if(g.status==='wait'){if(first<0)first=out.length;flat=flat.concat(g.photos);}else out.push(g);});
+    if(first>=0)Array.prototype.splice.apply(out,[first,0].concat(bMakeGroups(flat,per)));
+    B.groups=out;render(true);
+  },
+  'b-join':function(el){
+    var B=S.batch;if(!B||bBusy())return;
+    var i=bIndex(el.dataset.id),g=B.groups[i],nx=B.groups[i+1];
+    if(!g||!nx||g.photos.length+nx.photos.length>3)return;
+    if(!(g.status==='wait'||g.status==='fail')||!(nx.status==='wait'||nx.status==='fail'))return;
+    g.photos=g.photos.concat(nx.photos);g.status='wait';g.err='';B.groups.splice(i+1,1);render(true);
+  },
+  'b-split':function(el){
+    var B=S.batch;if(!B||bBusy())return;
+    var i=bIndex(el.dataset.id),g=B.groups[i];
+    if(!g||g.photos.length<2||!(g.status==='wait'||g.status==='fail'))return;
+    Array.prototype.splice.apply(B.groups,[i,1].concat(bMakeGroups(g.photos,1)));render(true);
+  },
+  'b-rm':function(el){
+    var B=S.batch;if(!B||bBusy())return;
+    var i=bIndex(el.dataset.id);if(i<0)return;
+    B.groups.splice(i,1);render(true);
+  },
+  'b-inc':function(el){var g=bGroup(el.dataset.id);if(!g)return;g.include=!!el.checked;render(true);},
+  'b-more':function(el){var g=bGroup(el.dataset.id);if(!g)return;g.more=!g.more;render(true);},
   'rm-photo':function(el){S.photos.splice(+el.dataset.i,1);S.full.splice(+el.dataset.i,1);render(true);},
   'read':function(){startScan();},
   'sample':function(){startScan();},
@@ -1995,7 +2263,7 @@ var ACT={
     S.wines=seeds();S.q='';S.type='all';S.csv='';S.confirm='';persist();toast('Demo reset.');render(true);
   }
 };
-var KEEP_CONFIRM=['del-wine','del-tasting','reset','del-imported','lb-del'];
+var KEEP_CONFIRM=['b-back','del-wine','del-tasting','reset','del-imported','lb-del'];
 
 app.addEventListener('click',function(e){
   var el=e.target.closest('[data-act]');
@@ -2033,6 +2301,7 @@ function onBind(e){
     if(box)box.innerHTML=resultsHtml();
     return;
   }
+  if(t.hasAttribute&&t.hasAttribute('data-bk')){var bg=bGroup(t.getAttribute('data-id'));if(bg){var bk=t.getAttribute('data-bk');if(bk==='qty')bg.qty=t.value;else if(bg.wine)bg.wine[bk]=t.value;}return;}
   if(t.hasAttribute&&t.hasAttribute('data-mk')){var mi=menuItem(t.getAttribute('data-id'));if(mi)mi[t.getAttribute('data-mk')]=t.value;return;}
   if(t.hasAttribute&&t.hasAttribute('data-dsearch')){
     if(S.drink){S.drink.q=t.value;var db=document.getElementById('dresults');if(db)db.innerHTML=drinkListHtml();}
@@ -2042,9 +2311,14 @@ function onBind(e){
   if(path)bindSet(path,t.value);
 }
 app.addEventListener('input',onBind);
+app.addEventListener('focusout',function(){
+  var B=S.batch;if(!B||!B.pending)return;
+  setTimeout(function(){var a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&app.contains(a))return;B.pending=false;render(true);},0);
+});
 app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
+  else if(c&&c.contains('batch-in'))onBatchPhotos(e.target);
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
     var k=e.target.dataset.k,v=e.target.value;
