@@ -319,7 +319,7 @@ var RESEARCH={
 
 /* ---- Small helpers ---- */
 var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:''},fOpen:false};
-try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want'||_v.shelf==='coll')S.shelf=_v.shelf;if(_v.f&&typeof _v.f==='object')Object.keys(S.f).forEach(function(k){if(_v.f[k]!==undefined)S.f[k]=_v.f[k];});}}catch(e){}
+try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want'||_v.shelf==='coll')S.shelf=_v.shelf;}}catch(e){}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36);}
@@ -513,7 +513,7 @@ function researchHtml(r){
 function chip(v,l){return '<button class="chip'+(S.type===v?' on':'')+'" data-act="filter" data-v="'+v+'" aria-pressed="'+(S.type===v)+'">'+l+'</button>';}
 /* ---- Sort and filter ---- */
 var SORTS=[['added','Recently added'],['tasted','Last tasted'],['rating','Highest rated'],['name','Name A to Z'],['producer','Producer A to Z'],['vintage-new','Vintage, newest first'],['drinkby','Drink soonest'],['vintage-old','Vintage, oldest first']];
-function saveView(){try{localStorage.setItem('bottle-notes-view-v1',JSON.stringify({sort:S.sort,shelf:S.shelf,f:S.f}));}catch(e){}}
+function saveView(){try{localStorage.setItem('bottle-notes-view-v1',JSON.stringify({sort:S.sort,shelf:S.shelf}));}catch(e){}}
 function regionKey(v){var k=norm(v).trim().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),g=ALIAS[k];return g?g[0]:k;}
 function countryOf(w){return impCountry(w.country);}
 function grapesOf(w){
