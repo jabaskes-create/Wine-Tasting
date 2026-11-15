@@ -254,6 +254,7 @@ dd .v{overflow-wrap:anywhere;min-width:0}
 .bfail{color:var(--danger);font-size:14px}
 .photos li.psel{outline:3px solid var(--accent);outline-offset:1px}
 .bitem .photos button.thumbbtn{cursor:pointer}
+.grp-sub{margin:8px 0 0 12px;padding-left:10px;border-left:2px solid var(--line)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:420px){
@@ -621,17 +622,47 @@ function sortFilterBar(){
   }
   return '<div class="sfbar">'+sortSel+'<button class="btn'+(n?' on':'')+'" data-act="flt-toggle" aria-expanded="'+S.fOpen+'">Filters'+(n?' ('+n+')':'')+'</button></div>'+panel;
 }
-function rowHtml(w){
+function rowHtml(w,sub){
   var avg=avgRating(w),last=lastTasting(w),n=w.tastings.length;
-  var meta=[w.producer,w.vintage].filter(Boolean).join(' · ');
+  var meta=sub?'':[w.producer,w.vintage].filter(Boolean).join(' · ');
   var where=[w.region,w.country].filter(Boolean).join(', ');
   return '<li><button class="row" data-act="open" data-id="'+w.id+'">'+thumb(w)+
-    '<span class="rbody"><span class="rname">'+esc(w.name||'Untitled wine')+'</span><span class="rmeta">'+esc(meta)+'</span><span class="rmeta">'+flagHtml(w.country)+esc(where)+'</span>'+
+    '<span class="rbody"><span class="rname">'+esc(sub?(w.vintage||'No vintage'):(w.name||'Untitled wine'))+'</span>'+(meta?'<span class="rmeta">'+esc(meta)+'</span>':'')+'<span class="rmeta">'+flagHtml(w.country)+esc(where)+'</span>'+
     (isWant(w)&&w.seen?'<span class="rwhere">Seen: '+esc(w.seen)+'</span>':'')+(last&&last.where?'<span class="rwhere">Last: '+esc(last.where)+'</span>':'')+'</span>'+
     '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':(pastBest(w)?'<span class="wtag">Past its best</span>':''))+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(w.score?'<span class="rcount">Rated '+esc(w.score)+'</span>':(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':'')):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
     '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>'))+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
 }
 function addLabel(){var q=S.q.trim();return q?'+ Add “'+esc(q.slice(0,40))+'” to Want to try':'+ Add a wine by name';}
+var GRP={};
+function wineKey(w){var k=function(x){return norm(x).replace(/[^a-z0-9]/g,'');},n=k(w.name);return n?n+'|'+k(w.producer):'';}
+function groupRows(ws){
+  var order=[],map={};
+  ws.forEach(function(w){
+    var k=wineKey(w);
+    if(!k){order.push({k:'',items:[w]});return;}
+    if(!map[k]){map[k]={k:k,items:[]};order.push(map[k]);}
+    map[k].items.push(w);
+  });
+  return order;
+}
+function vintSort(a,b){var x=vintageNum(a),y=vintageNum(b);if(!x&&!y)return 0;if(!x)return 1;if(!y)return -1;return y-x;}
+/* Same wine and producer in several vintages: one row that opens to show each year. */
+function groupHtml(g){
+  var ws=g.items;
+  if(ws.length<2)return rowHtml(ws[0]);
+  var first=ws[0],sorted=ws.slice().sort(vintSort);
+  var open=GRP[g.k]===true||(!!S.q.trim()&&GRP[g.k]!==false);
+  var vints=sorted.map(function(w){return w.vintage||'no vintage';});
+  var where=[first.region,first.country].filter(Boolean).join(', ');
+  var bottles=ws.reduce(function(a,w){return a+qtyOf(w);},0),tn=ws.reduce(function(a,w){return a+w.tastings.length;},0);
+  var side=S.shelf==='coll'?'<span class="avg">×'+bottles+'</span><span class="rcount">'+(bottles===1?'bottle':'bottles')+'</span>':
+    (S.shelf==='want'?'<span class="rcount">'+ws.length+' vintages</span>':'<span class="rcount">'+tn+(tn===1?' tasting':' tastings')+'</span>');
+  return '<li><button class="row grp" data-act="grp" data-k="'+g.k+'" aria-expanded="'+open+'">'+thumb(first)+
+    '<span class="rbody"><span class="rname">'+esc(first.name||'Untitled wine')+'</span>'+(first.producer?'<span class="rmeta">'+esc(first.producer)+'</span>':'')+
+    '<span class="rmeta">'+ws.length+' vintages: '+esc(vints.join(', '))+'</span><span class="rmeta">'+flagHtml(first.country)+esc(where)+'</span></span>'+
+    '<span class="rside">'+side+'<span class="rcount">'+(open?'▾ Hide':'▸ Show')+'</span></span></button>'+
+    (open?'<ul class="list grp-sub">'+sorted.map(function(w){return rowHtml(w,true);}).join('')+'</ul>':'')+'</li>';
+}
 function resultsHtml(){
   var ws=filtered();
   if(!ws.length){
@@ -642,7 +673,7 @@ function resultsHtml(){
     return '<div class="empty"><p class="etitle">Your cellar is empty</p><p>Scan a label or wine list to add your first bottle, or bring in a list you already keep.</p><div class="trow" style="justify-content:center;margin-top:10px"><button class="btn" data-act="imp-open">Import spreadsheet</button></div></div>';
   }
   var line=(S.q.trim()||S.type!=='all'||filterCount())?'<p class="count-line">Showing '+ws.length+' of '+shelfWines().length+'</p>':'';
-  return (S.shelf==='coll'?'<div class="trow"><button class="btn btn-primary" data-act="go-drink">Drink a bottle</button><button class="btn" data-act="go-stats">Stats</button></div>':'')+(S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+ws.map(rowHtml).join('')+'</ul>';
+  return (S.shelf==='coll'?'<div class="trow"><button class="btn btn-primary" data-act="go-drink">Drink a bottle</button><button class="btn" data-act="go-stats">Stats</button></div>':'')+(S.shelf==='want'?'<div class="trow"><button class="btn" data-act="add-typed">'+addLabel()+'</button></div>':'')+line+'<ul class="list">'+groupRows(ws).map(groupHtml).join('')+'</ul>';
 }
 var GEAR='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15z"/></svg>';
 function toolBtn(act,title,sub,extra){return '<button class="tbtn" data-act="'+act+'"'+(extra||'')+'><span class="ttitle">'+title+'</span><span class="tsub">'+sub+'</span></button>';}
@@ -2072,6 +2103,7 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   'read':function(){startScan();},
   'sample':function(){startScan();},
   'filter':function(el){S.type=el.dataset.v;render(true);},
+  'grp':function(el){var k=el.dataset.k,g=groupRows(filtered()).filter(function(x){return x.k===k;})[0];if(!g)return;var open=GRP[k]===true||(!!S.q.trim()&&GRP[k]!==false);GRP[k]=!open;render(true);},
   'open':function(el){S.sel=el.dataset.id;S.addOpen=false;S.nt=blankTasting();nav('detail');},
   'rate':function(el){
     var o=el.dataset.target==='t'?(S.draft&&S.draft.t):S.nt;
