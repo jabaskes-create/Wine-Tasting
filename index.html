@@ -255,6 +255,17 @@ dd .v{overflow-wrap:anywhere;min-width:0}
 .photos li.psel{outline:3px solid var(--accent);outline-offset:1px}
 .bitem .photos button.thumbbtn{cursor:pointer}
 .grp-sub{margin:8px 0 0 12px;padding-left:10px;border-left:2px solid var(--line)}
+.verdict{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:12px;border-radius:10px;background:var(--surface-2)}
+.verdict.v-now{background:var(--ok-soft)}.verdict.v-hold{background:var(--info-soft)}.verdict.v-past{background:var(--warn-soft)}
+.vtag{font:600 14px/1.2 var(--font-body)}
+.rsec{display:flex;flex-direction:column;gap:6px}
+.rsec h3{font:600 13px/1.3 var(--font-body);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.revs,.pairs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.revs li{display:flex;flex-direction:column;gap:2px}
+.rvhead{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.rvsrc{font-weight:600}.rvscore{font-family:var(--font-mono);font-size:13px}
+.pairs{flex-direction:row;flex-wrap:wrap}.pairs li{background:var(--surface-2);border-radius:999px;padding:4px 12px;font-size:14px}
+details.prod summary{cursor:pointer;font-weight:600;padding:6px 0}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px);text-align:center}
 
 @media (max-width:420px){
@@ -496,18 +507,40 @@ function datalists(){
   return '<datalist id="placeList">'+opts(places)+'</datalist><datalist id="tasterList">'+opts(tasters)+'</datalist>';
 }
 
-function researchHtml(r){
+function drinkState(r){
+  var y=new Date().getFullYear(),f=parseInt(r.from,10)||0,u=parseInt(r.until,10)||0;
+  if(!f&&!u)return null;
+  if(f&&y<f)return {k:'hold',t:'Hold',d:'Ready from '+f+(u?', best by '+u:'')+'.'};
+  if(u&&y>u)return {k:'past',t:'Past its best',d:'The suggested window ended in '+u+'.'};
+  if(!f)return {k:'now',t:'Drink by '+u,d:'Still within its suggested window.'};
+  return {k:'now',t:'Drink now',d:(u?'Good through '+u+'.':'In its window since '+f+'.')};
+}
+function researchHtml(r,again){
   if(!r)return '';
-  var rows=[['Producer',r.producer],['Style',r.style],['Drink window',r.drink],['Typical price',r.price]].filter(function(x){return x[1];}).map(function(x){
+  var out='',st=drinkState(r);
+  if(st)out+='<div class="verdict v-'+st.k+'"><span class="vtag">'+esc(st.t)+'</span><span>'+esc(st.d)+'</span></div>'+(r.drink?'<p class="muted">'+esc(r.drink)+'</p>':'');
+  else if(r.drink)out+='<div class="verdict"><span class="vtag">Drink window</span><span>'+esc(r.drink)+'</span></div>';
+  var revs=Array.isArray(r.reviews)?r.reviews:[];
+  if(revs.length)out+='<div class="rsec"><h3>What reviewers said</h3><ul class="revs">'+revs.map(function(v){
+    return '<li><span class="rvhead"><span class="rvsrc">'+esc(v.source||'')+'</span>'+(v.score?'<span class="rvscore">'+esc(v.score)+'</span>':'')+'</span>'+(v.note?'<span>'+esc(v.note)+'</span>':'')+'</li>';
+  }).join('')+'</ul></div>';
+  if(r.vintageNote)out+='<div class="rsec"><h3>The year</h3><p>'+esc(r.vintageNote)+'</p></div>';
+  if(r.taste||r.structure||r.serving)out+='<div class="rsec"><h3>What it tastes like</h3>'+(r.taste?'<p>'+esc(r.taste)+'</p>':'')+(r.structure?'<p class="muted">'+esc(r.structure)+'</p>':'')+(r.serving?'<p class="muted">Serve: '+esc(r.serving)+'</p>':'')+'</div>';
+  var pr=Array.isArray(r.pairings)?r.pairings:[];
+  if(pr.length)out+='<div class="rsec"><h3>Pairs with</h3><ul class="pairs">'+pr.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
+  var rows=[['Style',r.style],['Typical price',r.price]].filter(function(x){return x[1];}).map(function(x){
     return '<div class="frow"><dt>'+x[0]+'</dt><dd><span class="v">'+esc(x[1])+'</span></dd></div>';
   }).join('');
+  if(rows)out+='<dl class="facts">'+rows+'</dl>';
+  if(r.producer)out+='<details class="prod"><summary>About the producer</summary><p>'+esc(r.producer)+'</p></details>';
+  if(!out)out='<p class="muted">Nothing more than the grapes and region was found.</p>';
   var srcs=Array.isArray(r.sources)&&r.sources.length?r.sources:null;
   var foot=srcs?'<p class="src">Sources: '+srcs.map(function(x){
     var u=/^https?:\/\//i.test(x.url||'')?x.url:'';
     return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title||u)+'</a>':esc(x.title||'');
   }).join(' · ')+'</p>':'<p class="src">Sample text for the demo. The live version lists the web pages it used for each line.</p>';
-  return '<div class="rhead"><span class="h3">What the lookup found</span><span class="tag tag-researched">Researched</span></div>'+
-    (rows?'<dl class="facts">'+rows+'</dl>':'<p class="muted">Nothing more than the grapes and region was found.</p>')+foot;
+  var redo=again?(!r.v?'<p class="muted">This lookup is from the older version. Look up again to add reviews, a drink window, tasting notes and pairings.</p>':'')+'<div class="trow"><button class="btn" data-act="lookup-again"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up again')+'</button></div>':'';
+  return '<div class="rhead"><span class="h3">What the lookup found</span><span class="tag tag-researched">Researched</span></div>'+out+foot+redo;
 }
 
 /* list */
@@ -746,7 +779,7 @@ function reviewView(){
     (edit?'':(d.menuDraft?'<p class="notice"><strong>From a wine list.</strong> Only what the list printed is filled in. Add your tasting below and save.</p>':d.manual?'<p class="notice"><strong>Typed in by you.</strong> Add what you know, even just a name. A bottle you have not found yet is fine.</p>':d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
     '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
-    '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price range. It only fills empty fields, and each result is tagged Researched with its sources.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
+    '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for reviews of this vintage, when to drink it, what it tastes like, food pairings, grapes, region and price. It only fills empty fields, and each result is tagged Researched with its sources.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
     '<section class="card"><div class="field"><label class="flabel" for="f-notes">Notes about this wine</label><textarea id="f-notes" rows="3" data-bind="d.notes" placeholder="Anything not tied to one tasting: where you bought it, when to open it">'+esc(d.notes)+'</textarea></div></section>'+
     (edit?'':'<section class="card"><div><h2 class="h3">Your tasting</h2><p class="muted">Optional. You can add tastings later from the wine page.</p></div>'+tastingForm('t',d.t)+'</section>')+
     (edit?'':'<section class="card"><div class="field"><label class="flabel" for="f-seen">Want to try instead? Where did you see it</label><input id="f-seen" type="text" data-bind="d.seen" value="'+esc(d.seen||'')+'" placeholder="Optional, e.g. Eataly, €18" autocomplete="off"></div></section>')+
@@ -808,7 +841,7 @@ function detailView(){
     photosCard(w)+
     (isWant(w)?'':'<section class="card"><div class="lrow"><div><h2 class="h3">Collection</h2><p class="muted">'+(qtyOf(w)?bottlesText(qtyOf(w))+' on hand.':'None on hand.')+'</p></div><div class="trow"><button class="btn" data-act="qty-dec" aria-label="Remove one bottle"'+(qtyOf(w)?'':' disabled')+'>−</button><button class="btn" data-act="qty-inc" aria-label="Add one bottle">+</button></div></div>'+(qtyOf(w)?'<div class="actions"><button class="btn btn-primary wide" data-act="drink-this">Drink a bottle</button></div>':'')+'</section>')+
     (isWant(w)?'<section class="card"><div class="lrow"><div><h2 class="h3">On your Want to try list</h2><p class="muted">'+(w.seen?'Seen: '+esc(w.seen)+'. ':'')+'Use the buttons at the bottom to move it, or add a tasting to move it to Tasted.</p></div></div></section>':'')+
-    (w.research?'<section class="card">'+researchHtml(w.research)+'</section>':'<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for grapes, region, producer background, drink window and price. Only empty fields get filled.</p></div><button class="btn" data-act="lookup-saved"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up more')+'</button></div></section>')+
+    (w.research?'<section class="card">'+researchHtml(w.research,true)+'</section>':'<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for reviews of this vintage, when to drink it, what it tastes like, pairings, grapes, region and price. Only empty fields get filled.</p></div><button class="btn" data-act="lookup-saved"'+(S.looking?' disabled':'')+'>'+(S.looking?'Looking up…':'Look up more')+'</button></div></section>')+
     (w.notes?'<section class="card"><h2 class="h3">Notes</h2><p style="overflow-wrap:anywhere">'+esc(w.notes)+'</p></section>':'')+
     '<section class="card"><div class="shead"><h2 class="h3">Tastings ('+n+')</h2><button class="btn" data-act="toggle-add">'+(S.addOpen?'Close':'Add a tasting')+'</button></div>'+addForm+
     (n?'<ul class="tastings">'+tl+'</ul>':(S.addOpen?'':'<p class="muted">No tastings yet. Add where you tried it and what you thought.</p>'))+'</section>'+
@@ -1533,7 +1566,13 @@ function liveLookup(w,stillHere,after){
         ['grapes','region'].forEach(function(k){
           if(r[k]&&!(w[k]||'').trim()){w[k]=r[k];w.src[k]='researched';filled++;}
         });
-        w.research={producer:r.producer||'',style:r.style||'',drink:r.drink||'',price:r.price||'',sources:Array.isArray(r.sources)?r.sources.slice(0,4):[]};
+        var rs={v:r.v||1};
+        ['producer','style','drink','price','vintageNote','taste','structure','serving','from','until'].forEach(function(k){rs[k]=r[k]||'';});
+        rs.pairings=Array.isArray(r.pairings)?r.pairings.slice(0,3):[];
+        rs.reviews=Array.isArray(r.reviews)?r.reviews.slice(0,3):[];
+        rs.sources=Array.isArray(r.sources)?r.sources.slice(0,5):[];
+        w.research=rs;
+        if(r.until&&!(w.drinkby||'').trim()){w.drinkby=r.until;w.src.drinkby='researched';filled++;}
         if(after)after();
         toast(filled?'Lookup done. Filled '+filled+(filled===1?' empty field.':' empty fields.'):'Lookup done.');
       }else if(x.status===422){
@@ -2127,6 +2166,12 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
       return;
     }
     liveLookup(d,function(){return S.draft===d&&S.view==='review';});
+  },
+  'lookup-again':function(){
+    var w=getSel();
+    if(!w||S.looking)return;
+    S.looking=true;render(true);
+    liveLookup(w,function(){return S.view==='detail'&&getSel()===w;},function(){persist();});
   },
   'lookup-saved':function(){
     var w=getSel();
