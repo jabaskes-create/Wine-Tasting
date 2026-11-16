@@ -54,7 +54,7 @@ const RECORD_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      grapes: str('Grape varieties, comma separated'),
+      grapes: str('Grape varieties, comma separated. Add a percentage after a grape, like "Merlot 60%, Cabernet Franc 40%", only when a source states the blend for this wine. Never guess percentages.'),
       region: str('Wine region'),
       from: str('First year to drink, four digits, or empty'),
       until: str('Last year to drink, four digits, or empty'),
