@@ -119,6 +119,8 @@ button.srow{cursor:pointer}
 .shbtn{flex:1;border:0;background:transparent;color:var(--ink);padding:9px 3px;border-radius:9px;font:600 13px var(--font-body);cursor:pointer;min-height:40px}
 .shbtn.on{background:var(--ink);color:var(--bg,#fff)}
 .wtag{font:600 11px var(--font-body);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap}
+.wtag.soon{color:var(--warn);background:var(--warn-soft);border-color:var(--warn)}
+.dsoon{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;margin:0 0 10px;padding:10px 12px;border:1px solid var(--warn);background:var(--warn-soft);color:var(--warn);border-radius:10px;font:600 14px var(--font-body);cursor:pointer}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
 .sfbar{display:flex;gap:8px;align-items:center}
 .sfbar .srt{flex:1;min-width:0;min-height:44px}
@@ -333,7 +335,7 @@ var RESEARCH={
 };
 
 /* ---- Small helpers ---- */
-var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:''},fOpen:false};
+var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:'',drink:''},fOpen:false};
 try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want'||_v.shelf==='coll')S.shelf=_v.shelf;}}catch(e){}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -650,7 +652,7 @@ function grapesOf(w){
   return String(w.grapes||'').split(/[,;\/&]|\s+e\s+|\s+and\s+|\s+y\s+/i).map(function(g){return g.replace(/\d+\s*%/g,'').replace(/\s+/g,' ').trim();}).filter(Boolean);
 }
 function grapeKey(g){var k=norm(g).trim().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''),a=ALIAS[k];return a?a[0]:k;}
-function filterCount(){var f=S.f,n=0;if(f.country)n++;if(f.region)n++;if(f.grape)n++;if(f.rating)n++;if(f.tasted)n++;return n;}
+function filterCount(){var f=S.f,n=0;if(f.country)n++;if(f.region)n++;if(f.grape)n++;if(f.rating)n++;if(f.tasted)n++;if(f.drink)n++;return n;}
 function passes(w){
   var f=S.f;
   if(f.country&&norm(countryOf(w))!==norm(f.country))return false;
@@ -659,6 +661,8 @@ function passes(w){
   if(f.rating&&avgRating(w)<f.rating)return false;
   if(f.tasted==='yes'&&!w.tastings.length)return false;
   if(f.tasted==='no'&&w.tastings.length)return false;
+  if(f.drink==='soon'&&!(drinkSoon(w)||(pastBest(w)&&qtyOf(w)>0)))return false;
+  if(f.drink==='past'&&!(pastBest(w)&&qtyOf(w)>0))return false;
   return true;
 }
 /* Choices for the filter lists come from the wines you have, so there are never empty options. */
@@ -682,7 +686,7 @@ function sorter(mode){
   switch(mode){
     case 'tasted':return function(a,b){var x=lastTasting(a),y=lastTasting(b),dx=(x&&x.date)||'',dy=(y&&y.date)||'';if(!dx&&!dy)return tie(a,b);if(!dx)return 1;if(!dy)return -1;return dy.localeCompare(dx)||tie(a,b);};
     case 'rating':return function(a,b){var x=avgRating(a),y=avgRating(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y-x||tie(a,b);};
-    case 'drinkby':return function(a,b){var x=drinkEnd(a),y=drinkEnd(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return x-y||tie(a,b);};
+    case 'drinkby':return function(a,b){var x=drinkKey(a),y=drinkKey(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return x-y||tie(a,b);};
     case 'price':return function(a,b){var x=bottleValue(a),y=bottleValue(b);if(!x&&!y)return tie(a,b);if(!x)return 1;if(!y)return -1;return y.mid-x.mid||tie(a,b);};
     case 'name':return function(a,b){return cmpText(a.name,b.name)||tie(a,b);};
     case 'producer':return function(a,b){var x=a.producer||'',y=b.producer||'';if(!x&&!y)return cmpText(a.name,b.name);if(!x)return 1;if(!y)return -1;return cmpText(x,y)||cmpText(a.name,b.name);};
@@ -691,12 +695,41 @@ function sorter(mode){
     default:return tie;
   }
 }
-function drinkEnd(w){
-  var m=/^\s*(\d{4})(?:\s*[-\/.]\s*(\d{1,2}))?(?:\s*[-\/.]\s*(\d{1,2}))?/.exec(String(w.drinkby||''));
+function drinkEndOf(str){
+  var m=/^\s*(\d{4})(?:\s*[-\/.]\s*(\d{1,2}))?(?:\s*[-\/.]\s*(\d{1,2}))?/.exec(String(str||''));
   if(!m)return 0;
   var y=+m[1],mo=m[2]?+m[2]:12,d=m[3]?+m[3]:0;
   if(y<1900||y>2300||mo<1||mo>12)return 0;
   return d?new Date(y,mo-1,d,23,59,59).getTime():new Date(y,mo,0,23,59,59).getTime();
+}
+function yearsIn(t){return (String(t||'').match(/\b(?:19|20)\d{2}\b/g)||[]).map(Number);}
+/* Last day of the drinking window: your Drink until, else what the lookup found */
+function drinkEnd(w){
+  var e=drinkEndOf(w.drinkby);if(e)return e;
+  var r=w.research;if(!r)return 0;
+  e=drinkEndOf(r.until);if(e)return e;
+  var ys=yearsIn(r.drink);return ys.length?drinkEndOf(String(ys[ys.length-1])):0;
+}
+/* First year of the window, from the lookup, when it is still ahead */
+function drinkStartYear(w){
+  var r=w.research;if(!r)return 0;
+  var f=parseInt(r.from,10)||0;if(f)return f;
+  var ys=yearsIn(r.drink);
+  return (ys.length>1&&!/\bnow\b/i.test(r.drink))?ys[0]:0;
+}
+function drinkHold(w){var f=drinkStartYear(w);return !!f&&f>new Date().getFullYear();}
+var SOON_TXT=/\bdrink\s+(now|soon|up)\b|\bat\s+(its\s+)?peak\b|\bpast\s+(its\s+)?peak\b/i;
+/* True when the window closes this year or next, or the lookup's advice says to drink it now */
+function drinkSoon(w){
+  if(isWant(w)||qtyOf(w)<1||pastBest(w)||drinkHold(w))return false;
+  var e=drinkEnd(w);
+  if(e&&(e<Date.now()+400*86400000||new Date(e).getFullYear()<=new Date().getFullYear()+1))return true;
+  return !!(w.research&&SOON_TXT.test(String(w.research.drink||'')));
+}
+/* Sort key: wines advised to drink now but with no end date still rank ahead of undated ones */
+function drinkKey(w){
+  var e=drinkEnd(w);if(e)return e;
+  return drinkSoon(w)?Date.now()+180*86400000:0;
 }
 function pastBest(w){var e=drinkEnd(w);return !!e&&e<Date.now();}
 function isWant(w){return w.status==='want';}
@@ -748,9 +781,12 @@ function sortFilterBar(){
       '<div class="field"><label class="flabel" for="f-grape">Grape</label><select id="f-grape" class="flt" data-k="grape">'+opt(o.grapes,S.f.grape,'Any grape')+'</select></div>'+
       '<div class="field"><label class="flabel" for="f-rating">Rating</label><select id="f-rating" class="flt" data-k="rating">'+[['0','Any rating'],['3','3 stars and up'],['4','4 stars and up'],['5','5 stars']].map(function(x){return '<option value="'+x[0]+'"'+(String(S.f.rating)===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></div>'+
       '<div class="field"><label class="flabel" for="f-tasted">Tasted</label><select id="f-tasted" class="flt" data-k="tasted">'+[['','Tasted or not'],['yes','Tasted'],['no','Not tasted yet']].map(function(x){return '<option value="'+x[0]+'"'+(S.f.tasted===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></div>'+
+      '<div class="field"><label class="flabel" for="f-drink">Drinking window</label><select id="f-drink" class="flt" data-k="drink">'+[['','Any'],['soon','Drink soon or past its best'],['past','Past its best']].map(function(x){return '<option value="'+x[0]+'"'+(S.f.drink===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('')+'</select></div>'+
       '</div>'+(n?'<div class="trow" style="margin-top:8px"><button class="btn btn-ghost" data-act="flt-clear">Clear filters</button></div>':'')+'</div>';
   }
-  return '<div class="sfbar">'+sortSel+'<button class="btn'+(n?' on':'')+'" data-act="flt-toggle" aria-expanded="'+S.fOpen+'">Filters'+(n?' ('+n+')':'')+'</button></div>'+panel;
+  var dn=0,dp=0;if(S.shelf==='coll'&&!S.f.drink)S.wines.forEach(function(w){if(shelfOf(w,'coll')){if(pastBest(w))dp++;else if(drinkSoon(w))dn++;}});
+  var banner=(dn+dp)?'<button class="dsoon" data-act="drink-show"><span>'+(dn+dp)+(dn+dp===1?' wine':' wines')+' to drink soon'+(dp?' ('+dp+' past '+(dp===1?'its':'their')+' best)':'')+'</span><span>Show</span></button>':'';
+  return banner+'<div class="sfbar">'+sortSel+'<button class="btn'+(n?' on':'')+'" data-act="flt-toggle" aria-expanded="'+S.fOpen+'">Filters'+(n?' ('+n+')':'')+'</button></div>'+panel;
 }
 function rowHtml(w,sub){
   var avg=avgRating(w),last=lastTasting(w),n=w.tastings.length;
@@ -759,7 +795,7 @@ function rowHtml(w,sub){
   return '<li><button class="row" data-act="open" data-id="'+w.id+'">'+thumb(w)+
     '<span class="rbody"><span class="rname">'+esc(sub?(w.vintage||'No vintage'):(w.name||'Untitled wine'))+'</span>'+(meta?'<span class="rmeta">'+esc(meta)+'</span>':'')+'<span class="rmeta">'+flagHtml(w.country)+esc(where)+'</span>'+
     (isWant(w)&&w.seen?'<span class="rwhere">Seen: '+esc(w.seen)+'</span>':'')+(last&&last.where?'<span class="rwhere">Last: '+esc(last.where)+'</span>':'')+'</span>'+
-    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':(pastBest(w)?'<span class="wtag">Past its best</span>':''))+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(bottleValue(w)?'<span class="rcount">≈'+money(bottleValue(w).sym,bottleValue(w).mid)+' each</span>':'')+(w.score?'<span class="rcount">Rated '+esc(w.score)+'</span>':(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':'')):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
+    '<span class="rside">'+(isWant(w)?'<span class="wtag">Want to try</span>':(pastBest(w)?'<span class="wtag">Past its best</span>':(drinkSoon(w)?'<span class="wtag soon">Drink soon</span>':'')))+(S.shelf==='coll'?'<span class="avg">×'+qtyOf(w)+'</span><span class="rcount">'+(qtyOf(w)===1?'bottle':'bottles')+'</span>'+(bottleValue(w)?'<span class="rcount">≈'+money(bottleValue(w).sym,bottleValue(w).mid)+' each</span>':'')+(w.score?'<span class="rcount">Rated '+esc(w.score)+'</span>':(avg?'<span class="rcount">'+avg.toFixed(1)+' ★</span>':'')):(!isWant(w)&&qtyOf(w)?'<span class="wtag">Own '+qtyOf(w)+'</span>':'')+(isWant(w)?'':(avg?'<span class="avg">'+avg.toFixed(1)+'<i>★</i></span>':'<span class="avg none">—</span>')+
     '<span class="rcount">'+n+(n===1?' tasting':' tastings')+'</span>'))+(w.example?'<span class="ex">Example</span>':'')+'</span></button></li>';
 }
 function addLabel(){var q=S.q.trim();return q?'+ Add “'+esc(q.slice(0,40))+'” to Want to try':'+ Add a wine by name';}
@@ -2236,7 +2272,7 @@ var ACT={
   'go-detail-back':function(){nav('detail');},
   'stat-go':function(el){
     var k=el.dataset.k,v=el.dataset.v;
-    S.f={country:'',region:'',grape:'',rating:0,tasted:''};S.type='all';S.q='';S.shelf='coll';
+    S.f={country:'',region:'',grape:'',rating:0,tasted:'',drink:''};S.type='all';S.q='';S.shelf='coll';
     if(k==='type')S.type=v;else if(k==='country')S.f.country=v;else if(k==='region')S.f.region=v;else if(k==='grape')S.f.grape=v;
     saveView();nav('list');
   },
@@ -2483,7 +2519,8 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   },
   'go-tools':function(){nav('tools');},
   'flt-toggle':function(){S.fOpen=!S.fOpen;render(true);},
-  'flt-clear':function(){S.f={country:'',region:'',grape:'',rating:0,tasted:''};saveView();render(true);},
+  'drink-show':function(){S.f.drink='soon';S.sort='drinkby';saveView();render(true);},
+  'flt-clear':function(){S.f={country:'',region:'',grape:'',rating:0,tasted:'',drink:''};saveView();render(true);},
   'lb-open':function(el){S.lb={i:+el.dataset.i||0,zoom:false};try{history.pushState({k:HI,lb:1},'');}catch(e){}render(true);},
   'lb-close':function(el,e){
     /* the dark backdrop closes it; taps on the bar or arrows should not */
