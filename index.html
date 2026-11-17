@@ -671,7 +671,52 @@ var VREGIONS=[
  ['Southern hemisphere',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia',''],['New Zealand','New Zealand',''],['Chile','Chile',''],['Argentina','Argentina Mendoza','red'],['South Africa','South Africa','']]]
 ];
 var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
-function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
+/* Regions you typed in earlier are filed under their country in the list. Country comes from well-known place names. */
+var VCOUNTRIES=[
+ ['Italy','italy|italia|sicily|sicilia|etna|tuscany|toscana|chianti|brunello|montalcino|bolgheri|piedmont|piemonte|barolo|barbaresco|barbera|langhe|veneto|amarone|valpolicella|soave|prosecco|friuli|puglia|apulia|sardinia|sardegna|abruzzo|campania|umbria|lombardy|franciacorta|alto adige|trentino|marche|montepulciano|taurasi'],
+ ['France','france|bordeaux|medoc|pomerol|saint emilion|st emilion|graves|sauternes|pauillac|margaux|burgundy|bourgogne|chablis|champagne|rhone|chateauneuf|hermitage|loire|sancerre|vouvray|alsace|beaujolais|provence|languedoc|roussillon|jura|savoie'],
+ ['Spain','spain|espana|rioja|ribera del duero|priorat|rias baixas|rueda|toro|jerez|sherry|cava|penedes|navarra|bierzo|galicia|jumilla|la mancha'],
+ ['Portugal','portugal|port|porto|douro|dao|alentejo|vinho verde|madeira'],
+ ['Germany','germany|deutschland|mosel|moselle|rheingau|pfalz|rheinhessen|nahe'],
+ ['Austria','austria|wachau|burgenland|kamptal'],
+ ['United States','united states|usa|napa|sonoma|oregon|willamette|washington|california|paso robles|santa barbara|russian river|finger lakes'],
+ ['Australia','australia|barossa|mclaren vale|hunter valley|margaret river|coonawarra|clare valley|eden valley|yarra valley|tasmania'],
+ ['New Zealand','new zealand|marlborough|central otago|hawkes bay'],
+ ['Chile','chile|maipo|colchagua|casablanca'],
+ ['Argentina','argentina|mendoza|uco valley|salta'],
+ ['South Africa','south africa|stellenbosch|swartland|paarl|franschhoek'],
+ ['Greece','greece|santorini|nemea'],
+ ['Hungary','hungary|tokaj']
+];
+var VGROUP={'Spain':'Spain and Portugal','Portugal':'Spain and Portugal','Germany':'Germany and Austria','Austria':'Germany and Austria','Australia':'Southern hemisphere','New Zealand':'Southern hemisphere','Chile':'Southern hemisphere','Argentina':'Southern hemisphere','South Africa':'Southern hemisphere'};
+function vCountry(text){
+  var t=' '+norm(text).replace(/[^a-z0-9]+/g,' ').trim()+' ',best='',len=0;
+  VCOUNTRIES.forEach(function(c){c[1].split('|').forEach(function(ph){if(t.indexOf(' '+ph+' ')!==-1&&ph.length>len){len=ph.length;best=c[0];}});});
+  return best;
+}
+function vBuiltinKeys(){var o={};VREGIONS.forEach(function(g){g[1].forEach(function(x){o[vKey(x[1],x[2])]=1;});});return o;}
+function vCustom(cache){
+  var b=vBuiltinKeys(),labels={},out=[];
+  VREGIONS.forEach(function(g){g[1].forEach(function(x){labels[norm(x[0])]=1;});});
+  Object.keys(cache||{}).forEach(function(k){
+    var c=cache[k];if(b[k]||!c||!c.q)return;
+    var label=c.label||c.region||c.q;if(labels[norm(label)])return;labels[norm(label)]=1;
+    out.push([label,c.q,c.style||'',vCountry(label+' '+c.q)]);
+  });
+  return out.sort(function(a,b){return norm(a[0])<norm(b[0])?-1:1;});
+}
+function vGroups(cache){
+  var gs=VREGIONS.map(function(g){return [g[0],g[1].slice()];}),extra={};
+  vCustom(cache).forEach(function(x){
+    var name=x[3]?(VGROUP[x[3]]||x[3]):'Other regions',i,hit=null;
+    for(i=0;i<gs.length;i++){if(gs[i][0]===name)hit=gs[i];}
+    if(!hit){hit=extra[name]||(extra[name]=[name,[]]);}
+    hit[1].push([x[0],x[1],x[2]]);
+  });
+  Object.keys(extra).sort(function(a,b){return a==='Other regions'?1:b==='Other regions'?-1:(a<b?-1:1);}).forEach(function(n){gs.push(extra[n]);});
+  return gs;
+}
+function vFind(label){var r=null;vGroups(vLoad()).forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
 function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
@@ -687,7 +732,7 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var opts='<option value="">Choose a region…</option>'+vGroups(cache).map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
   var shown=V.show&&cache[V.show];
@@ -2628,12 +2673,18 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   'v-look':function(){
     var V=S.vint;if(!V||VT.busy)return;
     var typed=(V.typed||'').trim().slice(0,80),label,q,style='';
-    if(typed){label=typed;q=typed;}
+    var typedNew=false;
+    if(typed){
+      var nt=norm(typed).trim(),hit=null;
+      VREGIONS.forEach(function(g){g[1].forEach(function(x){if(!hit&&(norm(x[0]).trim()===nt||norm(x[1]).trim()===nt))hit=x;});});
+      if(hit){V.sel=hit[0];V.typed='';label=hit[0];q=hit[1];style=hit[2];}
+      else{label=typed;q=typed;typedNew=true;}
+    }
     else if(V.sel){var r=vFind(V.sel);if(!r)return;label=r[0];q=r[1];style=r[2];}
     else{toast('Choose a region or type one first.');return;}
     var k=vKey(q,style),cache=vLoad();
     if(cache[k]&&Date.now()-cache[k].at<365*86400000){V.show=k;render(true);return;}
-    vFetch(label,q,style,function(ok){});
+    vFetch(label,q,style,function(ok){if(ok&&typedNew&&S.vint){S.vint.sel=label;S.vint.typed='';if(S.view==='vintage')render(true);}});
   },
   'v-open':function(el){S.vint.show=el.dataset.k;render(true);},
   'v-refresh':function(el){var c=vLoad()[el.dataset.k];if(!c||VT.busy)return;vFetch(c.label||c.region,c.q,c.style||'',function(){});},
