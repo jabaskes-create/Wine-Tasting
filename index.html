@@ -151,6 +151,23 @@ button.srow{cursor:pointer}
 .empty{border:1px dashed var(--line);border-radius:10px;padding:28px 16px;text-align:center;color:var(--muted)}
 .etitle{font:500 20px var(--font-display);color:var(--ink);margin-bottom:4px}
 .hbtns{display:flex;gap:8px;align-items:center}
+.vsel{width:100%}
+.vleg{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12px;color:var(--muted);margin:6px 0 10px}
+.vk{display:inline-block;width:12px;height:12px;border-radius:3px}
+.vlist{list-style:none;margin:0;padding:0}
+.vrow{display:grid;grid-template-columns:46px 1fr auto;gap:2px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.vyear{font-weight:700;font-variant-numeric:tabular-nums}
+.vbar{height:10px;border-radius:5px;background:var(--line);overflow:hidden}
+.vfill{display:block;height:100%}
+.vscore{font-size:13px;text-align:right;white-space:nowrap}.vscore i{font-style:normal;color:var(--muted)}
+.vsub{grid-column:2 / 4;font-size:12px;color:var(--muted)}
+.v5{background:#1f6b45}.v4{background:#4a9a62}.v3{background:#a3b84a}.v2{background:#d9b53f}.v1{background:#d98a3f}.v0{background:#c4523f}
+.vfoot{font-size:12px;margin-top:10px}
+.vchips{display:flex;flex-wrap:wrap;gap:6px}
+.vchips .chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font:600 13px var(--font-body);cursor:pointer}
+.vchips .chip.on{border-color:var(--accent);background:var(--accent-soft)}
+.hlink{font:600 13px var(--font-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;height:44px;padding:0 10px;cursor:pointer}
+
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;padding:0}
 .iconbtn:hover{border-color:var(--accent)}
 .tlist{display:flex;flex-direction:column;gap:8px;margin-top:8px}
@@ -643,6 +660,94 @@ function collectionValue(list){
   return {by:by,order:order,priced:priced,bottles:bottles};
 }
 
+/* ---- Vintage chart: look up how a region's vintages were rated, e.g. while shopping ---- */
+var VKEY='bottle-notes-vintage-v1';
+var VREGIONS=[
+ ['France',[['Bordeaux red','Bordeaux','red'],['Bordeaux white and Sauternes','Sauternes and white Bordeaux','white'],['Burgundy red','Burgundy','red'],['Burgundy white','Burgundy','white'],['Champagne','Champagne',''],['Rhône north','Northern Rhône','red'],['Rhône south','Southern Rhône','red'],['Loire Valley','Loire Valley',''],['Alsace','Alsace',''],['Beaujolais','Beaujolais','red']]],
+ ['Italy',[['Piedmont (Barolo, Barbaresco)','Piedmont Barolo Barbaresco','red'],['Tuscany (Chianti, Brunello)','Tuscany','red'],['Veneto (Amarone)','Veneto Amarone','red']]],
+ ['Spain and Portugal',[['Rioja','Rioja','red'],['Ribera del Duero','Ribera del Duero','red'],['Priorat','Priorat','red'],['Port','Vintage Port','fortified'],['Douro','Douro','red']]],
+ ['Germany and Austria',[['Germany Riesling','Germany Riesling','white'],['Austria','Austria','']]],
+ ['United States',[['Napa Valley','Napa Valley','red'],['Sonoma','Sonoma County',''],['Oregon','Oregon Willamette Valley',''],['Washington State','Washington State','']]],
+ ['Southern hemisphere',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia',''],['New Zealand','New Zealand',''],['Chile','Chile',''],['Argentina','Argentina Mendoza','red'],['South Africa','South Africa','']]]
+];
+var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
+function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
+function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
+function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
+var VT={busy:'',queue:[],total:0,done:0};
+function vTier(p){
+  if(p>=95)return {t:'Outstanding',c:'v5'};
+  if(p>=90)return {t:'Excellent',c:'v4'};
+  if(p>=85)return {t:'Very good',c:'v3'};
+  if(p>=80)return {t:'Good',c:'v2'};
+  if(p>=70)return {t:'Fair',c:'v1'};
+  return {t:'Weak',c:'v0'};
+}
+function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
+function vintageView(){
+  var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
+  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var busy=!!VT.busy;
+  var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
+  var shown=V.show&&cache[V.show];
+  var chart='';
+  if(shown){
+    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.</p></div></div>'+
+      '<div class="vleg"><span class="vk v5"></span>95+<span class="vk v4"></span>90–94<span class="vk v3"></span>85–89<span class="vk v2"></span>80–84<span class="vk v1"></span>70–79<span class="vk v0"></span>under 70</div>'+
+      '<ul class="vlist">'+shown.rows.map(function(r){
+        var t=vTier(r.pct),w=Math.max(6,Math.min(100,Math.round((r.pct-60)/40*100)));
+        var per=r.ratings.map(function(q){return esc(q.source)+' '+q.score+(q.scale===100?'':'/'+q.scale);}).join(' · ');
+        return '<li class="vrow"><span class="vyear">'+esc(r.year)+'</span><span class="vbar"><span class="vfill '+t.c+'" style="width:'+w+'%"></span></span><span class="vscore"><b>'+r.pct+'</b> <i>'+t.t+'</i></span>'+
+          '<span class="vsub">'+(r.note?esc(r.note)+' · ':'')+per+'</span></li>';
+      }).join('')+'</ul>'+
+      '<p class="muted vfoot">A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>'+
+      (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
+      '<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>';
+  }
+  var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p></section>':'';
+  var missingPop=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
+  return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
+    '<section class="card"><p class="muted">How recent vintages of a region were rated. Look up a region once and it is saved here, so it opens instantly later.</p>'+
+    '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
+    '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
+    '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
+    chart+savedHtml+
+    (missingPop.length?'<section class="card"><h2 class="h3">Before you head out</h2><p class="muted">Save the '+missingPop.length+' most popular regions now, on Wi-Fi, so they open instantly in the store. Each takes about 20 seconds and uses a little API credit.</p><div class="trow"><button class="btn" data-act="v-pre"'+(busy?' disabled':'')+'>'+(busy&&VT.total>1?'Saving '+(VT.done+1)+' of '+VT.total+'…':'Save popular regions')+'</button>'+(VT.total>1&&busy?'<button class="btn btn-ghost" data-act="v-stop">Stop</button>':'')+'</div></section>':'')+
+  '</div>';
+}
+function vFetch(label,q,style,done){
+  VT.busy=label;if(S.view==='vintage')render(true);
+  var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},100000);
+  var headers={'Content-Type':'application/json'};
+  if(S.pass)headers['x-passcode']=S.pass;
+  var fin=function(ok,msg){clearTimeout(timer);VT.busy='';if(msg)toast(msg,8000);if(S.view==='vintage')render(true);if(done)done(ok);};
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/vintage',{method:'POST',headers:headers,body:JSON.stringify({region:q,style:style}),signal:ctl.signal});})
+    .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
+    .then(function(x){
+      if(x.status===200&&x.j&&x.j.chart&&x.j.chart.rows){
+        var c=x.j.chart;c.q=q;c.style=style;c.label=label;
+        var cache=vLoad();cache[vKey(q,style)]=c;vSave(cache);
+        if(S.vint&&!VT.queue.length)S.vint.show=vKey(q,style);
+        fin(true);return;
+      }
+      var m=x.status===422?'No reliable ratings found for '+label+'. Try a more common region name.':
+        (x.status===503||x.status===404)?'Vintage lookup is not switched on yet. Add api/vintage.js to the site.':
+        (x.status===401||x.status===403)?'Vintage lookup needs sign-in or the passcode (Tools).':
+        'Vintage lookup failed (status '+x.status+').';
+      if(x.status===503||x.status===404||x.status===401||x.status===403)VT.queue=[];
+      fin(false,m);
+    })
+    .catch(function(){fin(false,'Could not reach the lookup service. Try again.');});
+}
+function vNext(){
+  if(VT.busy)return;
+  var label=VT.queue.shift();
+  if(!label){VT.total=0;VT.done=0;if(S.view==='vintage')render(true);return;}
+  var r=vFind(label);if(!r){vNext();return;}
+  vFetch(label,r[1],r[2],function(ok){VT.done++;vNext();});
+}
+
 /* ---- Sort and filter ---- */
 var SORTS=[['added','Recently added'],['tasted','Last tasted'],['rating','Highest rated'],['name','Name A to Z'],['producer','Producer A to Z'],['vintage-new','Vintage, newest first'],['drinkby','Drink soonest'],['price','Price, high to low'],['vintage-old','Vintage, oldest first']];
 function saveView(){try{localStorage.setItem('bottle-notes-view-v1',JSON.stringify({sort:S.sort,shelf:S.shelf}));}catch(e){}}
@@ -853,6 +958,7 @@ function toolsView(){
     '<button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
+      toolBtn('go-vintage','Vintage chart','How recent vintages of a wine region were rated. Handy in a wine shop')+
       toolBtn('go-stats','Stats','How many bottles you have, by type, country, region, grape and vintage')+
       toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
@@ -877,7 +983,7 @@ function listView(){
   if(S.type!=='all'&&present.indexOf(S.type)===-1)S.type='all';
   var hasEx=S.wines.some(function(w){return w.example;});
   return '<div class="wrap">'+
-    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+subLine()+'</p></div><div class="hbtns"><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan label or menu</button></div></header>'+
+    '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+subLine()+'</p></div><div class="hbtns"><button class="hlink" data-act="go-vintage">Vintages</button><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan label or menu</button></div></header>'+
     (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     shelfBar()+
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="'+(S.shelf==='want'?'Search your Want to try list':(S.shelf==='coll'?'Search your collection':'Search name, grape, region, place, taster'))+'" autocomplete="off" aria-label="Search this list"></div>'+
@@ -997,6 +1103,7 @@ function render(keep){
   else if(S.view==='menu'&&S.menu)html=menuView();
   else if(S.view==='drink'&&S.drink)html=drinkView();
   else if(S.view==='stats')html=statsView();
+  else if(S.view==='vintage')html=vintageView();
   else if(S.view==='map'&&S.map)html=mapView();
   else if(S.view==='import')html=importView();
   else if(S.view==='tools')html=toolsView();
@@ -2517,6 +2624,26 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
       })
       .catch(function(){finish(0);});
   },
+  'go-vintage':function(){if(!S.vint)S.vint={sel:'',typed:'',show:''};nav('vintage');},
+  'v-look':function(){
+    var V=S.vint;if(!V||VT.busy)return;
+    var typed=(V.typed||'').trim().slice(0,80),label,q,style='';
+    if(typed){label=typed;q=typed;}
+    else if(V.sel){var r=vFind(V.sel);if(!r)return;label=r[0];q=r[1];style=r[2];}
+    else{toast('Choose a region or type one first.');return;}
+    var k=vKey(q,style),cache=vLoad();
+    if(cache[k]&&Date.now()-cache[k].at<365*86400000){V.show=k;render(true);return;}
+    vFetch(label,q,style,function(ok){});
+  },
+  'v-open':function(el){S.vint.show=el.dataset.k;render(true);},
+  'v-refresh':function(el){var c=vLoad()[el.dataset.k];if(!c||VT.busy)return;vFetch(c.label||c.region,c.q,c.style||'',function(){});},
+  'v-del':function(el){var c=vLoad();delete c[el.dataset.k];vSave(c);if(S.vint&&S.vint.show===el.dataset.k)S.vint.show='';render(true);},
+  'v-pre':function(){
+    if(VT.busy)return;var cache=vLoad();
+    VT.queue=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
+    VT.total=VT.queue.length;VT.done=0;if(!VT.total)return;vNext();
+  },
+  'v-stop':function(){VT.queue=[];VT.total=0;toast('Stopping after the one in progress. Saved regions are kept.');},
   'go-tools':function(){nav('tools');},
   'flt-toggle':function(){S.fOpen=!S.fOpen;render(true);},
   'drink-show':function(){S.f.drink='soon';S.sort='drinkby';saveView();render(true);},
@@ -2667,6 +2794,7 @@ function onBind(e){
     if(S.drink){S.drink.q=t.value;var db=document.getElementById('dresults');if(db)db.innerHTML=drinkListHtml();}
     return;
   }
+  if(t.hasAttribute&&t.hasAttribute('data-vtyped')){if(S.vint)S.vint.typed=t.value;return;}
   var path=t.getAttribute&&t.getAttribute('data-bind');
   if(path)bindSet(path,t.value);
 }
@@ -2679,6 +2807,7 @@ app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
   else if(c&&c.contains('batch-in'))onBatchPhotos(e.target);
+  else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr){var vc=vLoad()[vKey(vr[1],vr[2])];if(vc)S.vint.show=vKey(vr[1],vr[2]);}render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
     var k=e.target.dataset.k,v=e.target.value;
