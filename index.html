@@ -1483,7 +1483,6 @@ function batchSave(){
     w.qty=n;w.tastings=[];
     S.wines.unshift(w);newW++;newList.push(w);
   });
-  pqAdd(newList);
   B.groups=B.groups.filter(function(g){return ready.indexOf(g)===-1;});
   persist();S.shelf='coll';saveView();
   toast('Added '+bottlesText(bottles)+': '+newW+(newW===1?' new wine':' new wines')+(more?', '+more+' added to wines you already had':'')+(skipped?'. '+skipped+' still need a name.':'.'),7000);
@@ -1961,7 +1960,7 @@ function saveNew(force,status){
   if(status==='want'){w.status='want';w.seen=(d.seen||'').trim().slice(0,120);w.tastings=[];}
   else{w.tastings=hasTasting(d.t)?[tastingFrom(d.t)]:[];
     if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();}
-  S.wines.unshift(w);persist();pqAdd([w]);
+  S.wines.unshift(w);persist();
   S.sel=w.id;S.dup=null;S.draft=null;clearPhotos();
   S.shelf=status==='want'?'want':(status==='coll'?'coll':'cellar');saveView();
   toast(status==='want'?'Saved to Want to try.':(status==='coll'?'Added '+bottlesText(w.qty)+' to your collection.':'Saved to Tasted.'));nav('detail');
