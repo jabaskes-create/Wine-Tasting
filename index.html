@@ -1045,7 +1045,7 @@ function scanView(){
   var picker=n<maxP?'<div class="picks"><div class="pick"><input id="photoCam" class="vh photo-in" type="file" accept="image/*" capture="environment"><label class="drop" for="photoCam"><span class="dtitle">Take a photo</span><span class="dsub">Opens the camera</span></label></div><div class="pick"><input id="photoLib" class="vh photo-in" type="file" accept="image/*"><label class="drop" for="photoLib"><span class="dtitle">Choose a photo</span><span class="dsub">From your library or files</span></label></div></div>'+(n?'':'<p class="muted">If the camera does not open here, take the picture with your camera app first, then choose it.</p>'):'';
   var actions=S.scanning?
     '<div class="reading" role="status"><span class="bar"></span>'+(recMode?'Reading receipt…':(menuMode?'Reading wine list…':'Reading label…'))+'</div>':
-    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
+    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):(n?'<button class="btn btn-primary wide" data-act="read">Read label</button>':'<button class="btn wide" data-act="add-typed">Type in a bottle instead</button><p class="muted">No photo? Type in the details yourself.</p>'));
   var modes=scanModes();
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">'+(drinkMode?'Drink a bottle':(recMode?'Scan a receipt':(menuMode?'Scan a wine list':'Scan a label')))+'</h1>'+(drinkMode?'':modes)+
@@ -1245,10 +1245,7 @@ function startScan(){
   S.scanning=true;var tok=++S.tok;
   render(true);
   var imgs=S.full.filter(Boolean);
-  if(!imgs.length){
-    setTimeout(function(){if(!S.scanning||tok!==S.tok)return;finishScan(sampleDraft());},1300);
-    return;
-  }
+  if(!imgs.length){S.scanning=false;toast('Add a photo of the label first, or type the bottle in.');render(true);return;}
   var ctl=new AbortController();
   var timer=setTimeout(function(){ctl.abort();},60000);
   var headers={'Content-Type':'application/json'};
@@ -1269,14 +1266,13 @@ function startScan(){
         d.photos=S.photos.slice();d.src=src;d.notes='';d.research=null;d.sampleKey='';d.t=blankTasting();d.live=true;d.orig=orig;d.used=examples.length;d.unsureN=unsureN;
         finishScan(d);
       }else if(x.status===503||x.status===404){
-        toast('Label reading is not switched on yet. Showing a sample bottle.');
-        finishScan(sampleDraft());
+        S.scanning=false;toast('Label reading is not switched on yet. You can type the bottle in instead.',8000);render(true);
       }else if(x.status===401){
         S.scanning=false;toast(S.user?'Your sign-in expired. Reload the page and sign in again.':'Scan passcode needed or wrong. Set it under Tools on the Cellar page.');render(true);
       }else if(x.status===403){
         S.scanning=false;toast(x.j&&x.j.error==='unverified'?'Verify your email first. Check your inbox for the link, then tap I verified it on the Cellar page.':'This account is not approved to scan labels yet. Ask the owner to add your email.',9000);render(true);
       }else{
-        S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+(x.j&&x.j.note?'; the model said: '+x.j.note:'')+'). Try a clearer photo, or use a sample bottle.',12000);render(true);
+        S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+(x.j&&x.j.note?'; the model said: '+x.j.note:'')+'). Try a clearer photo, or type the bottle in.',12000);render(true);
       }
     })
     .catch(function(err){
