@@ -699,6 +699,7 @@ function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/
 function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
 function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
 var VT={busy:'',queue:[],total:0,done:0};
+function vMissing(){var cache=vLoad(),out=[],now=Date.now();VREGIONS.forEach(function(g){g[1].forEach(function(x){var c=cache[vKey(x[1],x[2])];if(!vHas(x[0])&&!(c&&now-c.at<VSTALE))out.push(x[0]);});});return out;}
 
 var VTIER_PCT={5:97,4:92,3:87,2:82,1:72};
 function vBuilt(label){
@@ -801,6 +802,7 @@ function vintageView(){
     '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
+    (VT.total?'<section class="card"><p class="notice" role="status"><strong>Filling in regions.</strong> '+VT.done+' of '+VT.total+' done'+(VT.busy?', now '+esc(VT.busy):'')+'. About 20 seconds each. You can leave this screen open and keep browsing.</p><div class="trow"><button class="btn" data-act="v-stop">Stop</button></div></section>':'')+
     chart+savedHtml+
   '</div>';
 }
@@ -833,7 +835,12 @@ function vNext(){
   var label=VT.queue.shift();
   if(!label){VT.total=0;VT.done=0;if(S.view==='vintage')render(true);return;}
   var r=vFind(label);if(!r){vNext();return;}
-  vFetch(label,r[1],r[2],function(ok){VT.done++;vNext();});
+  var k=vKey(r[1],r[2]);VT.busy=label;if(S.view==='vintage')render(true);
+  vSharedGet(k,function(doc){
+    VT.busy='';
+    if(doc&&doc.tiers&&Date.now()-(doc.at||0)<VSTALE){VSH[k]=doc;VT.done++;vNext();return;}
+    vFetch(label,r[1],r[2],function(ok){VT.done++;vNext();});
+  });
 }
 
 /* ---- Sort and filter ---- */
@@ -1047,6 +1054,7 @@ function toolsView(){
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
       toolBtn('go-vintage','Vintage chart','How recent vintages of a wine region were rated. Handy in a wine shop')+
+      (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
       toolBtn('go-stats','Stats','How many bottles you have, by type, country, region, grape and vintage')+
       toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
@@ -2726,6 +2734,13 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     if(VT.busy)return;var cache=vLoad();
     VT.queue=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
     VT.total=VT.queue.length;VT.done=0;if(!VT.total)return;vNext();
+  },
+  'v-all':function(){
+    if(VT.busy||VT.queue.length)return;
+    VT.queue=vMissing();VT.total=VT.queue.length;VT.done=0;
+    if(!VT.total){toast('Every region is already filled in.');return;}
+    if(!S.vint)S.vint={sel:'',typed:'',show:''};
+    nav('vintage');vNext();
   },
   'v-stop':function(){VT.queue=[];VT.total=0;toast('Stopping after the one in progress. Saved regions are kept.');},
   'go-tools':function(){nav('tools');},
