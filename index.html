@@ -746,6 +746,15 @@ function vSharedPut(key,chart){
     return F.setDoc(ref,{label:String(chart.label||chart.region||'').slice(0,80),q:String(chart.q||'').slice(0,80),style:String(chart.style||'').slice(0,20),sourceNames:(chart.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()});
   }).catch(function(){});
 }
+var VSHL=null,VSHLtried=false;
+function vSharedLoad(){
+  if(VSHL||VSHLtried||!vCloud())return;
+  VSHLtried=true;var F=C.m.fs;
+  F.getDocs(F.collection(C.db,'vintageCharts')).then(function(q){
+    var o={};q.forEach(function(d){o[d.id]=d.data();});VSHL=o;
+    if(S.view==='vintage'&&!VT.busy)render(true);
+  }).catch(function(){});
+}
 function vShareAll(){
   if(!vCloud()){toast('Sign in first (Tools, Account). Sharing needs an account.',8000);return;}
   var cache=vLoad(),keys=Object.keys(cache),F=C.m.fs,ok=0,skip=0,err='';
@@ -796,7 +805,8 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||vHas(x[0])?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||vHas(x[0])||(VSHL&&VSHL[vKey(x[1],x[2])]&&VSHL[vKey(x[1],x[2])].tiers)?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  vSharedLoad();
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
   var shown=V.show&&(V.show.indexOf('b:')===0?vBuilt(V.show.slice(2)):V.show.indexOf('s:')===0?(VSH[V.show.slice(2)]?vFromShared(VSH[V.show.slice(2)]):null):cache[V.show]);
@@ -816,13 +826,13 @@ function vintageView(){
   }
   var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p></section>':'';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
-    '<section class="card"><p class="muted">How recent vintages of a region turned out. Major regions are built in. Others are looked up once and saved on this phone.</p>'+
+    '<section class="card"><p class="muted">How recent vintages of a region turned out. A ✓ means the chart is ready to open.</p>'+
     '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
     (VT.total?'<section class="card"><p class="notice" role="status"><strong>Filling in regions.</strong> '+VT.done+' of '+VT.total+' done'+(VT.busy?', now '+esc(VT.busy):'')+'. About 20 seconds each. You can leave this screen open and keep browsing.</p><div class="trow"><button class="btn" data-act="v-stop">Stop</button></div></section>':'')+
     (!VT.total&&VT.fails.length?'<section class="card"><h2 class="h3">Could not fill</h2><ul class="vlist">'+VT.fails.map(function(f){return '<li>'+esc(f.label)+': '+esc(f.why)+'</li>';}).join('')+'</ul><p class="muted">Run Fill all again to retry these, or paste a chart to me and I will build it in.</p></section>':'')+
-    chart+savedHtml+
+    chart+
   '</div>';
 }
 function vFetch(label,q,style,done){
