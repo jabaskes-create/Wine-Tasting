@@ -151,7 +151,7 @@ button.srow{cursor:pointer}
 .empty{border:1px dashed var(--line);border-radius:10px;padding:28px 16px;text-align:center;color:var(--muted)}
 .etitle{font:500 20px var(--font-display);color:var(--ink);margin-bottom:4px}
 .hbtns{display:flex;gap:8px;align-items:center}
-.vsel{width:100%}
+.vsel,.vcountry{width:100%}
 .vleg{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12px;color:var(--muted);margin:6px 0 10px}
 .vk{display:inline-block;width:12px;height:12px;border-radius:3px}
 .vlist{list-style:none;margin:0;padding:0}
@@ -665,10 +665,16 @@ var VKEY='bottle-notes-vintage-v1';
 var VREGIONS=[
  ['France',[['Bordeaux red','Bordeaux','red'],['Bordeaux white and Sauternes','Sauternes and white Bordeaux','white'],['Burgundy red','Burgundy','red'],['Burgundy white','Burgundy','white'],['Champagne','Champagne',''],['Rhône north','Northern Rhône','red'],['Rhône south','Southern Rhône','red'],['Loire Valley','Loire Valley',''],['Alsace','Alsace',''],['Beaujolais','Beaujolais','red']]],
  ['Italy',[['Piedmont (Barolo, Barbaresco)','Piedmont Barolo Barbaresco','red'],['Tuscany (Chianti, Brunello)','Tuscany','red'],['Veneto (Amarone)','Veneto Amarone','red']]],
- ['Spain and Portugal',[['Rioja','Rioja','red'],['Ribera del Duero','Ribera del Duero','red'],['Priorat','Priorat','red'],['Port','Vintage Port','fortified'],['Douro','Douro','red']]],
- ['Germany and Austria',[['Germany Riesling','Germany Riesling','white'],['Austria','Austria','']]],
+ ['Spain',[['Rioja','Rioja','red'],['Ribera del Duero','Ribera del Duero','red'],['Priorat','Priorat','red'],['Bierzo','Bierzo','']]],
+ ['Portugal',[['Port','Vintage Port','fortified'],['Douro','Douro','red']]],
+ ['Germany',[['Germany Riesling','Germany Riesling','white']]],
+ ['Austria',[['Austria','Austria','']]],
  ['United States',[['Napa Valley','Napa Valley','red'],['Sonoma','Sonoma County',''],['Oregon','Oregon Willamette Valley',''],['Washington State','Washington State','']]],
- ['Southern hemisphere',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia',''],['New Zealand','New Zealand',''],['Chile','Chile',''],['Argentina','Argentina Mendoza','red'],['South Africa','South Africa','']]]
+ ['Australia',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia','']]],
+ ['New Zealand',[['New Zealand','New Zealand','']]],
+ ['Chile',[['Chile','Chile','']]],
+ ['Argentina',[['Argentina','Argentina Mendoza','red']]],
+ ['South Africa',[['South Africa','South Africa','']]]
 ];
 /* Built-in rough guide: my own general-knowledge tiers for 2005 to 2022, one digit per year.
    5 outstanding, 4 excellent, 3 good, 2 average, 1 weak. Not copied from any published chart.
@@ -695,7 +701,17 @@ var VRATED={
 };
 function vHas(label){return !!(VRATED[label]||VBUILT[label]);}
 var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
-function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
+function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});
+  if(!r)vExtras().forEach(function(x){if(x[0]===label)r=x;});return r;}
+/* Regions someone looked up that are not in the fixed list, from this device and from the shared charts. */
+function vExtras(){
+  var known={},out=[],seen={};
+  VREGIONS.forEach(function(g){g[1].forEach(function(x){known[vKey(x[1],x[2])]=1;});});
+  function add(c){if(!c||!(c.label||c.region))return;var k=vKey(c.q||c.label,c.style||'');if(known[k]||seen[k])return;seen[k]=1;out.push([c.label||c.region,c.q||c.label,c.style||'']);}
+  var cache=vLoad();Object.keys(cache).forEach(function(k){add(cache[k]);});
+  if(VSHL)Object.keys(VSHL).forEach(function(k){if(VSHL[k]&&VSHL[k].tiers)add(VSHL[k]);});
+  out.sort(function(a,b){return a[0]<b[0]?-1:1;});return out;
+}
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
 function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
@@ -805,7 +821,11 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||vHas(x[0])||(VSHL&&VSHL[vKey(x[1],x[2])]&&VSHL[vKey(x[1],x[2])].tiers)?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var ex=vExtras(),countries=VREGIONS.map(function(g){return g[0];}).concat(ex.length?['Other regions']:[]);
+  var regs=!V.country?[]:V.country==='Other regions'?ex:(function(){var r=[];VREGIONS.forEach(function(g){if(g[0]===V.country)r=g[1];});return r;})();
+  var mark=function(x){return cache[vKey(x[1],x[2])]||vHas(x[0])||(VSHL&&VSHL[vKey(x[1],x[2])]&&VSHL[vKey(x[1],x[2])].tiers)?' ✓':'';};
+  var copts='<option value="">Choose a country…</option>'+countries.map(function(c){return '<option value="'+esc(c)+'"'+(V.country===c?' selected':'')+'>'+esc(c)+'</option>';}).join('');
+  var opts='<option value="">Choose a region…</option>'+regs.map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+mark(x)+'</option>';}).join('');
   vSharedLoad();
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
@@ -827,7 +847,8 @@ function vintageView(){
   var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p></section>':'';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
     '<section class="card"><p class="muted">How recent vintages of a region turned out. A ✓ means the chart is ready to open.</p>'+
-    '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
+    '<div class="field"><label class="flabel" for="v-country">Country</label><select id="v-country" class="vcountry">'+copts+'</select></div>'+
+    (regs.length>1?'<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>':'')+
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
     (VT.total?'<section class="card"><p class="notice" role="status"><strong>Filling in regions.</strong> '+VT.done+' of '+VT.total+' done'+(VT.busy?', now '+esc(VT.busy):'')+'. About 20 seconds each. You can leave this screen open and keep browsing.</p><div class="trow"><button class="btn" data-act="v-stop">Stop</button></div></section>':'')+
@@ -2944,6 +2965,11 @@ app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
   else if(c&&c.contains('batch-in'))onBatchPhotos(e.target);
+  else if(c&&c.contains('vcountry')){
+    if(!S.vint)S.vint={sel:'',typed:'',show:'',country:''};
+    S.vint.country=e.target.value;S.vint.sel='';S.vint.typed='';
+    var rg=[];if(S.vint.country==='Other regions')rg=vExtras();else VREGIONS.forEach(function(g){if(g[0]===S.vint.country)rg=g[1];});
+    if(rg.length===1){S.vint.sel=rg[0][0];vOpen(rg[0][0],rg[0][1],rg[0][2]);}else render(true);}
   else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr)vOpen(vr[0],vr[1],vr[2]);else render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
