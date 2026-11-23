@@ -793,7 +793,7 @@ function vintageView(){
       }).join('')+'</ul>'+
       (shown.rated?'<p class="muted vfoot">Some years rest on a single critic, and years a critic has not rated are missing.</p>':shown.builtin?'<p class="muted vfoot">Years after 2022 are not in this rough guide.</p>':'')+'<p class="muted vfoot">'+(shown.builtin?'A region-wide guide in five tiers. Good producers still make fine wine in weaker years.</p>':'A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>')+
       (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
-      (shown.builtin?'</section>':'<div class="trow"><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>');
+      '</section>';
   }
   var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p><div class="trow"><button class="btn btn-ghost" data-act="v-export">Export to a file</button><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>':'<section class="card"><h2 class="h3">Saved on this phone</h2><p class="muted">Nothing saved yet. You can bring charts in from a file exported on another device.</p><div class="trow"><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
@@ -2722,7 +2722,6 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   },
   'v-open':function(el){S.vint.show=el.dataset.k;render(true);},
   'v-refresh':function(el){var c=vLoad()[el.dataset.k];if(!c||VT.busy)return;vFetch(c.label||c.region,c.q,c.style||'',function(){});},
-  'v-del':function(el){var c=vLoad();delete c[el.dataset.k];vSave(c);if(S.vint&&S.vint.show===el.dataset.k)S.vint.show='';render(true);},
   'v-pre':function(){
     if(VT.busy)return;var cache=vLoad();
     VT.queue=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
