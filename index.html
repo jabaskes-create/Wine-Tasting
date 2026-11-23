@@ -670,57 +670,37 @@ var VREGIONS=[
  ['United States',[['Napa Valley','Napa Valley','red'],['Sonoma','Sonoma County',''],['Oregon','Oregon Willamette Valley',''],['Washington State','Washington State','']]],
  ['Southern hemisphere',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia',''],['New Zealand','New Zealand',''],['Chile','Chile',''],['Argentina','Argentina Mendoza','red'],['South Africa','South Africa','']]]
 ];
+/* Built-in rough guide: my own general-knowledge tiers for 2005 to 2022, one digit per year.
+   5 outstanding, 4 excellent, 3 good, 2 average, 1 weak. Not copied from any published chart. */
+var VBUILT_START=2005;
+var VBUILT={
+ 'Bordeaux red':'535335332325345543',
+ 'Burgundy red':'534445354345353545',
+ 'Burgundy white':'433445434545343545',
+ 'Champagne':'332523154343343442',
+ 'Rhône north':'435254333225544545',
+ 'Rhône south':'435254333225543545',
+ 'Piedmont (Barolo, Barbaresco)':'344334523444352353',
+ 'Tuscany (Chianti, Brunello)':'344334334325533545',
+ 'Rioja':'533335432354543443',
+ 'Napa Valley':'445435225554453523',
+ 'Oregon':'332433253453433244',
+ 'Germany Riesling':'434454543354354344'
+};
 var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
-/* Regions you typed in earlier are filed under their country in the list. Country comes from well-known place names. */
-var VCOUNTRIES=[
- ['Italy','italy|italia|sicily|sicilia|etna|tuscany|toscana|chianti|brunello|montalcino|bolgheri|piedmont|piemonte|barolo|barbaresco|barbera|langhe|veneto|amarone|valpolicella|soave|prosecco|friuli|puglia|apulia|sardinia|sardegna|abruzzo|campania|umbria|lombardy|franciacorta|alto adige|trentino|marche|montepulciano|taurasi'],
- ['France','france|bordeaux|medoc|pomerol|saint emilion|st emilion|graves|sauternes|pauillac|margaux|burgundy|bourgogne|chablis|champagne|rhone|chateauneuf|hermitage|loire|sancerre|vouvray|alsace|beaujolais|provence|languedoc|roussillon|jura|savoie'],
- ['Spain','spain|espana|rioja|ribera del duero|priorat|rias baixas|rueda|toro|jerez|sherry|cava|penedes|navarra|bierzo|galicia|jumilla|la mancha'],
- ['Portugal','portugal|port|porto|douro|dao|alentejo|vinho verde|madeira'],
- ['Germany','germany|deutschland|mosel|moselle|rheingau|pfalz|rheinhessen|nahe'],
- ['Austria','austria|wachau|burgenland|kamptal'],
- ['United States','united states|usa|napa|sonoma|oregon|willamette|washington|california|paso robles|santa barbara|russian river|finger lakes'],
- ['Australia','australia|barossa|mclaren vale|hunter valley|margaret river|coonawarra|clare valley|eden valley|yarra valley|tasmania'],
- ['New Zealand','new zealand|marlborough|central otago|hawkes bay'],
- ['Chile','chile|maipo|colchagua|casablanca'],
- ['Argentina','argentina|mendoza|uco valley|salta'],
- ['South Africa','south africa|stellenbosch|swartland|paarl|franschhoek'],
- ['Greece','greece|santorini|nemea'],
- ['Hungary','hungary|tokaj']
-];
-var VGROUP={'Spain':'Spain and Portugal','Portugal':'Spain and Portugal','Germany':'Germany and Austria','Austria':'Germany and Austria','Australia':'Southern hemisphere','New Zealand':'Southern hemisphere','Chile':'Southern hemisphere','Argentina':'Southern hemisphere','South Africa':'Southern hemisphere'};
-function vCountry(text){
-  var t=' '+norm(text).replace(/[^a-z0-9]+/g,' ').trim()+' ',best='',len=0;
-  VCOUNTRIES.forEach(function(c){c[1].split('|').forEach(function(ph){if(t.indexOf(' '+ph+' ')!==-1&&ph.length>len){len=ph.length;best=c[0];}});});
-  return best;
-}
-function vBuiltinKeys(){var o={};VREGIONS.forEach(function(g){g[1].forEach(function(x){o[vKey(x[1],x[2])]=1;});});return o;}
-function vCustom(cache){
-  var b=vBuiltinKeys(),labels={},out=[];
-  VREGIONS.forEach(function(g){g[1].forEach(function(x){labels[norm(x[0])]=1;});});
-  Object.keys(cache||{}).forEach(function(k){
-    var c=cache[k];if(b[k]||!c||!c.q)return;
-    var label=c.label||c.region||c.q;if(labels[norm(label)])return;labels[norm(label)]=1;
-    out.push([label,c.q,c.style||'',vCountry(label+' '+c.q)]);
-  });
-  return out.sort(function(a,b){return norm(a[0])<norm(b[0])?-1:1;});
-}
-function vGroups(cache){
-  var gs=VREGIONS.map(function(g){return [g[0],g[1].slice()];}),extra={};
-  vCustom(cache).forEach(function(x){
-    var name=x[3]?(VGROUP[x[3]]||x[3]):'Other regions',i,hit=null;
-    for(i=0;i<gs.length;i++){if(gs[i][0]===name)hit=gs[i];}
-    if(!hit){hit=extra[name]||(extra[name]=[name,[]]);}
-    hit[1].push([x[0],x[1],x[2]]);
-  });
-  Object.keys(extra).sort(function(a,b){return a==='Other regions'?1:b==='Other regions'?-1:(a<b?-1:1);}).forEach(function(n){gs.push(extra[n]);});
-  return gs;
-}
-function vFind(label){var r=null;vGroups(vLoad()).forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
+function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
 function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
 var VT={busy:'',queue:[],total:0,done:0};
+
+var VTIER_PCT={5:97,4:92,3:87,2:82,1:72};
+function vBuilt(label){
+  var str=VBUILT[label];if(!str)return null;
+  var rows=[];
+  for(var i=str.length-1;i>=0;i--){var d=+str.charAt(i);if(d>=1&&d<=5)rows.push({year:String(VBUILT_START+i),pct:VTIER_PCT[d],ratings:[],note:''});}
+  return {label:label,builtin:true,rows:rows,sourceNames:[],sources:[],at:0};
+}
 function vTier(p){
   if(p>=95)return {t:'Outstanding',c:'v5'};
   if(p>=90)return {t:'Excellent',c:'v4'};
@@ -732,33 +712,33 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var opts='<option value="">Choose a region…</option>'+vGroups(cache).map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||VBUILT[x[0]]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
-  var shown=V.show&&cache[V.show];
+  var shown=V.show&&(V.show.indexOf('b:')===0?vBuilt(V.show.slice(2)):cache[V.show]);
   var chart='';
   if(shown){
-    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.</p></div></div>'+
-      '<div class="vleg"><span class="vk v5"></span>95+<span class="vk v4"></span>90–94<span class="vk v3"></span>85–89<span class="vk v2"></span>80–84<span class="vk v1"></span>70–79<span class="vk v0"></span>under 70</div>'+
+    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">'+(shown.builtin?'Built-in rough guide, 2005 to 2022. From general wine knowledge, not a published chart, so treat it as approximate.':'Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.')+'</p></div></div>'+
+      (shown.builtin?'<div class="vleg"><span class="vk v5"></span>Outstanding<span class="vk v4"></span>Excellent<span class="vk v3"></span>Good<span class="vk v2"></span>Average<span class="vk v1"></span>Weak</div>':'<div class="vleg"><span class="vk v5"></span>95+<span class="vk v4"></span>90–94<span class="vk v3"></span>85–89<span class="vk v2"></span>80–84<span class="vk v1"></span>70–79<span class="vk v0"></span>under 70</div>')+
       '<ul class="vlist">'+shown.rows.map(function(r){
         var t=vTier(r.pct),w=Math.max(6,Math.min(100,Math.round((r.pct-60)/40*100)));
         var per=r.ratings.map(function(q){return esc(q.source)+' '+q.score+(q.scale===100?'':'/'+q.scale);}).join(' · ');
-        return '<li class="vrow"><span class="vyear">'+esc(r.year)+'</span><span class="vbar"><span class="vfill '+t.c+'" style="width:'+w+'%"></span></span><span class="vscore"><b>'+r.pct+'</b> <i>'+t.t+'</i></span>'+
-          '<span class="vsub">'+(r.note?esc(r.note)+' · ':'')+per+'</span></li>';
+        return '<li class="vrow"><span class="vyear">'+esc(r.year)+'</span><span class="vbar"><span class="vfill '+t.c+'" style="width:'+w+'%"></span></span><span class="vscore">'+(shown.builtin?'':'<b>'+r.pct+'</b> ')+'<i>'+(shown.builtin?'':'')+t.t+'</i></span>'+
+          (shown.builtin?'':'<span class="vsub">'+(r.note?esc(r.note)+' · ':'')+per+'</span>')+'</li>';
       }).join('')+'</ul>'+
-      '<p class="muted vfoot">A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>'+
+      (shown.builtin?'<p class="muted vfoot">Years after 2022 are not in the built-in guide. Tap below to look up sourced ratings, including recent years.</p>':'')+'<p class="muted vfoot">'+(shown.builtin?'A region-wide guide in five tiers. Good producers still make fine wine in weaker years.</p>':'A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>')+
       (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
-      '<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>';
+      (shown.builtin?'<div class="trow"><button class="btn" data-act="v-research" data-label="'+esc(shown.label)+'"'+(busy?' disabled':'')+'>Look up sourced ratings (about 20 seconds)</button></div></section>':'<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>');
   }
-  var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p></section>':'';
+  var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p><div class="trow"><button class="btn btn-ghost" data-act="v-export">Export to a file</button><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>':'<section class="card"><h2 class="h3">Saved on this phone</h2><p class="muted">Nothing saved yet. You can bring charts in from a file exported on another device.</p><div class="trow"><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>';
   var missingPop=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
-    '<section class="card"><p class="muted">How recent vintages of a region were rated. Look up a region once and it is saved here, so it opens instantly later.</p>'+
+    '<section class="card"><p class="muted">How recent vintages of a region turned out. Major regions are built in. Others are looked up once and saved on this phone.</p>'+
     '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
     chart+savedHtml+
-    (missingPop.length?'<section class="card"><h2 class="h3">Before you head out</h2><p class="muted">Save the '+missingPop.length+' most popular regions now, on Wi-Fi, so they open instantly in the store. Each takes about 20 seconds and uses a little API credit.</p><div class="trow"><button class="btn" data-act="v-pre"'+(busy?' disabled':'')+'>'+(busy&&VT.total>1?'Saving '+(VT.done+1)+' of '+VT.total+'…':'Save popular regions')+'</button>'+(VT.total>1&&busy?'<button class="btn btn-ghost" data-act="v-stop">Stop</button>':'')+'</div></section>':'')+
+    (missingPop.length?'<section class="card"><h2 class="h3">Sourced ratings</h2><p class="muted">The built-in guide covers '+Object.keys(VBUILT).length+' regions through 2022. To add sourced ratings and recent years for '+missingPop.length+' of them, run this once on Wi-Fi. Each takes about 20 seconds and uses a little API credit. Optional.</p><div class="trow"><button class="btn" data-act="v-pre"'+(busy?' disabled':'')+'>'+(busy&&VT.total>1?'Looking up '+(VT.done+1)+' of '+VT.total+'…':'Look up sourced ratings')+'</button>'+(VT.total>1&&busy?'<button class="btn btn-ghost" data-act="v-stop">Stop</button>':'')+'</div></section>':'')+
   '</div>';
 }
 function vFetch(label,q,style,done){
@@ -1045,7 +1025,7 @@ function scanView(){
   var picker=n<maxP?'<div class="picks"><div class="pick"><input id="photoCam" class="vh photo-in" type="file" accept="image/*" capture="environment"><label class="drop" for="photoCam"><span class="dtitle">Take a photo</span><span class="dsub">Opens the camera</span></label></div><div class="pick"><input id="photoLib" class="vh photo-in" type="file" accept="image/*"><label class="drop" for="photoLib"><span class="dtitle">Choose a photo</span><span class="dsub">From your library or files</span></label></div></div>'+(n?'':'<p class="muted">If the camera does not open here, take the picture with your camera app first, then choose it.</p>'):'';
   var actions=S.scanning?
     '<div class="reading" role="status"><span class="bar"></span>'+(recMode?'Reading receipt…':(menuMode?'Reading wine list…':'Reading label…'))+'</div>':
-    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):(n?'<button class="btn btn-primary wide" data-act="read">Read label</button>':'<button class="btn wide" data-act="add-typed">Type in a bottle instead</button><p class="muted">No photo? Type in the details yourself.</p>'));
+    (drinkMode?(n?'<button class="btn btn-primary wide" data-act="read">Find it in my collection</button>':'<p class="muted">Add a photo of the label first.</p>')+'<button class="btn wide" data-act="drink-pick-open">Or choose from my collection</button>':menuMode?(n?'<button class="btn btn-primary wide" data-act="read">'+(recMode?'Read receipt':'Read wine list')+'</button>':'<p class="muted">Add a photo of the '+(recMode?'receipt':'wine list')+' first.</p>'):'<button class="btn btn-primary wide" data-act="read">'+(n?'Read label':'Use a sample bottle')+'</button>'+(n?'':'<p class="muted">No photo yet. The demo will read a sample bottle instead.</p>'));
   var modes=scanModes();
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">'+(drinkMode?'Drink a bottle':(recMode?'Scan a receipt':(menuMode?'Scan a wine list':'Scan a label')))+'</h1>'+(drinkMode?'':modes)+
@@ -1245,7 +1225,10 @@ function startScan(){
   S.scanning=true;var tok=++S.tok;
   render(true);
   var imgs=S.full.filter(Boolean);
-  if(!imgs.length){S.scanning=false;toast('Add a photo of the label first, or type the bottle in.');render(true);return;}
+  if(!imgs.length){
+    setTimeout(function(){if(!S.scanning||tok!==S.tok)return;finishScan(sampleDraft());},1300);
+    return;
+  }
   var ctl=new AbortController();
   var timer=setTimeout(function(){ctl.abort();},60000);
   var headers={'Content-Type':'application/json'};
@@ -1266,13 +1249,14 @@ function startScan(){
         d.photos=S.photos.slice();d.src=src;d.notes='';d.research=null;d.sampleKey='';d.t=blankTasting();d.live=true;d.orig=orig;d.used=examples.length;d.unsureN=unsureN;
         finishScan(d);
       }else if(x.status===503||x.status===404){
-        S.scanning=false;toast('Label reading is not switched on yet. You can type the bottle in instead.',8000);render(true);
+        toast('Label reading is not switched on yet. Showing a sample bottle.');
+        finishScan(sampleDraft());
       }else if(x.status===401){
         S.scanning=false;toast(S.user?'Your sign-in expired. Reload the page and sign in again.':'Scan passcode needed or wrong. Set it under Tools on the Cellar page.');render(true);
       }else if(x.status===403){
         S.scanning=false;toast(x.j&&x.j.error==='unverified'?'Verify your email first. Check your inbox for the link, then tap I verified it on the Cellar page.':'This account is not approved to scan labels yet. Ask the owner to add your email.',9000);render(true);
       }else{
-        S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+(x.j&&x.j.note?'; the model said: '+x.j.note:'')+'). Try a clearer photo, or type the bottle in.',12000);render(true);
+        S.scanning=false;toast('Could not read that label (status '+x.status+(x.j&&x.j.error?', '+x.j.error:'')+(x.j&&x.j.status?' '+x.j.status:'')+(x.j&&x.j.note?'; the model said: '+x.j.note:'')+'). Try a clearer photo, or use a sample bottle.',12000);render(true);
       }
     })
     .catch(function(err){
@@ -1479,6 +1463,7 @@ function batchSave(){
     w.qty=n;w.tastings=[];
     S.wines.unshift(w);newW++;newList.push(w);
   });
+  pqAdd(newList);
   B.groups=B.groups.filter(function(g){return ready.indexOf(g)===-1;});
   persist();S.shelf='coll';saveView();
   toast('Added '+bottlesText(bottles)+': '+newW+(newW===1?' new wine':' new wines')+(more?', '+more+' added to wines you already had':'')+(skipped?'. '+skipped+' still need a name.':'.'),7000);
@@ -1956,7 +1941,7 @@ function saveNew(force,status){
   if(status==='want'){w.status='want';w.seen=(d.seen||'').trim().slice(0,120);w.tastings=[];}
   else{w.tastings=hasTasting(d.t)?[tastingFrom(d.t)]:[];
     if(d.t.taster&&d.t.taster.trim())S.lastTaster=d.t.taster.trim();}
-  S.wines.unshift(w);persist();
+  S.wines.unshift(w);persist();pqAdd([w]);
   S.sel=w.id;S.dup=null;S.draft=null;clearPhotos();
   S.shelf=status==='want'?'want':(status==='coll'?'coll':'cellar');saveView();
   toast(status==='want'?'Saved to Want to try.':(status==='coll'?'Added '+bottlesText(w.qty)+' to your collection.':'Saved to Tasted.'));nav('detail');
@@ -2668,19 +2653,24 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   'v-look':function(){
     var V=S.vint;if(!V||VT.busy)return;
     var typed=(V.typed||'').trim().slice(0,80),label,q,style='';
-    var typedNew=false;
-    if(typed){
-      var nt=norm(typed).trim(),hit=null;
-      VREGIONS.forEach(function(g){g[1].forEach(function(x){if(!hit&&(norm(x[0]).trim()===nt||norm(x[1]).trim()===nt))hit=x;});});
-      if(hit){V.sel=hit[0];V.typed='';label=hit[0];q=hit[1];style=hit[2];}
-      else{label=typed;q=typed;typedNew=true;}
-    }
+    if(typed){label=typed;q=typed;}
     else if(V.sel){var r=vFind(V.sel);if(!r)return;label=r[0];q=r[1];style=r[2];}
     else{toast('Choose a region or type one first.');return;}
     var k=vKey(q,style),cache=vLoad();
     if(cache[k]&&Date.now()-cache[k].at<365*86400000){V.show=k;render(true);return;}
-    vFetch(label,q,style,function(ok){if(ok&&typedNew&&S.vint){S.vint.sel=label;S.vint.typed='';if(S.view==='vintage')render(true);}});
+    if(!typed&&VBUILT[label]){V.show='b:'+label;render(true);return;}
+    vFetch(label,q,style,function(ok){});
   },
+  'v-export':function(){
+    var c=vLoad(),n=Object.keys(c).length;if(!n){toast('Nothing to export yet.');return;}
+    try{
+      var blob=new Blob([JSON.stringify({app:'bottle-notes-vintages',version:1,charts:c},null,1)],{type:'application/json'});
+      var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bottle-notes-vintage-charts.json';
+      document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+      toast('Exported '+n+(n===1?' chart.':' charts.'),5000);
+    }catch(e){toast('Could not create the file on this browser.',6000);}
+  },
+  'v-research':function(el){var r=vFind(el.dataset.label);if(!r||VT.busy)return;vFetch(r[0],r[1],r[2],function(){});},
   'v-open':function(el){S.vint.show=el.dataset.k;render(true);},
   'v-refresh':function(el){var c=vLoad()[el.dataset.k];if(!c||VT.busy)return;vFetch(c.label||c.region,c.q,c.style||'',function(){});},
   'v-del':function(el){var c=vLoad();delete c[el.dataset.k];vSave(c);if(S.vint&&S.vint.show===el.dataset.k)S.vint.show='';render(true);},
@@ -2853,7 +2843,20 @@ app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
   else if(c&&c.contains('batch-in'))onBatchPhotos(e.target);
-  else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr){var vc=vLoad()[vKey(vr[1],vr[2])];if(vc)S.vint.show=vKey(vr[1],vr[2]);}render(true);}
+  else if(c&&c.contains('vimp-in')){
+    var vf=e.target.files&&e.target.files[0];if(!vf)return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var j=JSON.parse(rd.result),inc=j&&j.charts,cur=vLoad(),n=0;
+        if(!inc||typeof inc!=='object')throw new Error('bad');
+        Object.keys(inc).forEach(function(k){var c=inc[k];if(c&&Array.isArray(c.rows)&&c.rows.length&&(!cur[k]||(c.at||0)>(cur[k].at||0))){cur[k]=c;n++;}});
+        vSave(cur);toast('Imported '+n+(n===1?' chart.':' charts.'),5000);render(true);
+      }catch(err){toast('That file is not a vintage chart export.',6000);}
+    };
+    rd.readAsText(vf);e.target.value='';
+  }
+  else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr){var vc=vLoad()[vKey(vr[1],vr[2])];if(vc)S.vint.show=vKey(vr[1],vr[2]);else if(VBUILT[vr[0]])S.vint.show='b:'+vr[0];}render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
     var k=e.target.dataset.k,v=e.target.value;
