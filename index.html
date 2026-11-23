@@ -712,6 +712,43 @@ function vBuilt(label){
   for(i=str.length-1;i>=0;i--){var d=+str.charAt(i);if(d>=1&&d<=5)rows.push({year:String(VBUILT_START+i),pct:VTIER_PCT[d],ratings:[],note:''});}
   return {label:label,builtin:true,rows:rows,sourceNames:[],sources:[],at:0};
 }
+
+/* ---- Shared charts: a region looked up by anyone is saved to Firebase as combined tiers for everyone ---- */
+var VSH={};
+function vConv(sc,v){
+  if(sc===100)return v;
+  if(sc===10)return v>=10?98:v>=9?94:v>=8?89:v>=7?84:v>=6?79:v>=5?74:70;
+  if(sc===5)return v>=5?98:v>=4.5?95:v>=4?91:v>=3.5?88:v>=3?84:v>=2.5?80:v>=2?75:65;
+  if(sc===20)return v>=19?98:v>=18?95:v>=17?92:v>=16?89:v>=15?85:78;
+  return v;
+}
+function vRowTier(r){
+  var t=0,n=0;(r.ratings||[]).forEach(function(q){t+=vConv(q.scale,q.score);n++;});
+  if(!n)return 0;var v=t/n;
+  return v>=96?5:v>=93?4:v>=90?3:v>=86?2:1;
+}
+function vTiersOf(chart){return chart.rows.map(function(r){var t=vRowTier(r);return t?r.year+':'+t:'';}).filter(Boolean).join(',');}
+function vCloud(){return !!(C.on&&C.db&&C.m&&C.m.fs&&S.user);}
+function vSharedGet(key,cb){
+  if(!vCloud()){cb(null);return;}
+  var F=C.m.fs;
+  F.getDoc(F.doc(C.db,'vintageCharts',key)).then(function(d){cb(d.exists()?d.data():null);}).catch(function(){cb(null);});
+}
+/* Only tiers and source names are shared, never per-critic scores. Skips if a recent copy exists. */
+function vSharedPut(key,chart){
+  if(!vCloud()||!chart||!chart.rows||chart.rows.length<6)return;
+  var tiers=vTiersOf(chart);if(tiers.split(',').length<6)return;
+  var F=C.m.fs,ref=F.doc(C.db,'vintageCharts',key);
+  F.getDoc(ref).then(function(d){
+    if(d.exists()&&Date.now()-(d.data().at||0)<300*86400000)return;
+    return F.setDoc(ref,{label:String(chart.label||chart.region||'').slice(0,80),q:String(chart.q||'').slice(0,80),style:String(chart.style||'').slice(0,20),sourceNames:(chart.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()});
+  }).catch(function(){});
+}
+function vFromShared(doc){
+  var rows=[];String(doc.tiers||'').split(',').forEach(function(x){var p=x.split(':'),t=+p[1];if(p[0]&&t>=1&&t<=5)rows.push({year:p[0],pct:VTIER_PCT[t],ratings:[],note:''});});
+  rows.sort(function(a,b){return b.year-a.year;});
+  return {label:doc.label,q:doc.q,style:doc.style,builtin:true,rated:true,shared:true,rows:rows,sourceNames:doc.sourceNames||[],sources:[],at:doc.at||0};
+}
 function vTier(p){
   if(p>=95)return {t:'Outstanding',c:'v5'};
   if(p>=90)return {t:'Excellent',c:'v4'};
@@ -726,10 +763,10 @@ function vintageView(){
   var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||vHas(x[0])?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
-  var shown=V.show&&(V.show.indexOf('b:')===0?vBuilt(V.show.slice(2)):cache[V.show]);
+  var shown=V.show&&(V.show.indexOf('b:')===0?vBuilt(V.show.slice(2)):V.show.indexOf('s:')===0?(VSH[V.show.slice(2)]?vFromShared(VSH[V.show.slice(2)]):null):cache[V.show]);
   var chart='';
   if(shown){
-    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">'+(shown.rated?'Built-in guide. Ratings from '+esc(shown.sourceNames.join(', '))+' combined into five tiers. Checked November 2026.':shown.builtin?'Built-in rough guide, 2005 to 2022. From general wine knowledge, not a published chart, so treat it as approximate.':'Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.')+'</p></div></div>'+
+    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">'+(shown.shared?'Shared guide, saved by an earlier lookup '+vAge(shown.at)+'. Ratings from '+esc(shown.sourceNames.join(', ')||'published sources')+' combined into five tiers.':shown.rated?'Built-in guide. Ratings from '+esc(shown.sourceNames.join(', '))+' combined into five tiers. Checked November 2026.':shown.builtin?'Built-in rough guide, 2005 to 2022. From general wine knowledge, not a published chart, so treat it as approximate.':'Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.')+'</p></div></div>'+
       (shown.builtin?'<div class="vleg"><span class="vk v5"></span>Outstanding<span class="vk v4"></span>Excellent<span class="vk v3"></span>Good<span class="vk v2"></span>Average<span class="vk v1"></span>Weak</div>':'<div class="vleg"><span class="vk v5"></span>95+<span class="vk v4"></span>90–94<span class="vk v3"></span>85–89<span class="vk v2"></span>80–84<span class="vk v1"></span>70–79<span class="vk v0"></span>under 70</div>')+
       '<ul class="vlist">'+shown.rows.map(function(r){
         var t=vTier(r.pct),w=Math.max(6,Math.min(100,Math.round((r.pct-60)/40*100)));
@@ -739,7 +776,7 @@ function vintageView(){
       }).join('')+'</ul>'+
       (shown.rated?'<p class="muted vfoot">Some years rest on a single critic, and years a critic has not rated are missing. Tap below for each critic’s own score.</p>':shown.builtin?'<p class="muted vfoot">Years after 2022 are not in the built-in guide. Tap below to look up sourced ratings, including recent years.</p>':'')+'<p class="muted vfoot">'+(shown.builtin?'A region-wide guide in five tiers. Good producers still make fine wine in weaker years.</p>':'A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>')+
       (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
-      (shown.builtin?'<div class="trow"><button class="btn" data-act="v-research" data-label="'+esc(shown.label)+'"'+(busy?' disabled':'')+'>Look up sourced ratings (about 20 seconds)</button></div></section>':'<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>');
+      (shown.builtin?'<div class="trow"><button class="btn" data-act="v-research" data-label="'+esc(shown.label)+'" data-q="'+esc(shown.q||'')+'" data-style="'+esc(shown.style||'')+'"'+(busy?' disabled':'')+'>Look up sourced ratings (about 20 seconds)</button></div></section>':'<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>');
   }
   var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p><div class="trow"><button class="btn btn-ghost" data-act="v-export">Export to a file</button><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>':'<section class="card"><h2 class="h3">Saved on this phone</h2><p class="muted">Nothing saved yet. You can bring charts in from a file exported on another device.</p><div class="trow"><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>';
   var missingPop=VPOPULAR.filter(function(l){var r=vFind(l);return r&&!cache[vKey(r[1],r[2])];});
@@ -763,7 +800,7 @@ function vFetch(label,q,style,done){
     .then(function(x){
       if(x.status===200&&x.j&&x.j.chart&&x.j.chart.rows){
         var c=x.j.chart;c.q=q;c.style=style;c.label=label;
-        var cache=vLoad();cache[vKey(q,style)]=c;vSave(cache);
+        var cache=vLoad();cache[vKey(q,style)]=c;vSave(cache);vSharedPut(vKey(q,style),c);
         if(S.vint&&!VT.queue.length)S.vint.show=vKey(q,style);
         fin(true);return;
       }
@@ -2670,7 +2707,12 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     var k=vKey(q,style),cache=vLoad();
     if(cache[k]&&Date.now()-cache[k].at<365*86400000){V.show=k;render(true);return;}
     if(!typed&&vHas(label)){V.show='b:'+label;render(true);return;}
-    vFetch(label,q,style,function(ok){});
+    VT.busy=label;render(true);
+    vSharedGet(k,function(doc){
+      VT.busy='';
+      if(doc&&doc.tiers){VSH[k]=doc;V.show='s:'+k;render(true);return;}
+      vFetch(label,q,style,function(ok){});
+    });
   },
   'v-export':function(){
     var c=vLoad(),n=Object.keys(c).length;if(!n){toast('Nothing to export yet.');return;}
@@ -2681,7 +2723,11 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
       toast('Exported '+n+(n===1?' chart.':' charts.'),5000);
     }catch(e){toast('Could not create the file on this browser.',6000);}
   },
-  'v-research':function(el){var r=vFind(el.dataset.label);if(!r||VT.busy)return;vFetch(r[0],r[1],r[2],function(){});},
+  'v-research':function(el){
+    if(VT.busy)return;var r=vFind(el.dataset.label);
+    if(r)vFetch(r[0],r[1],r[2],function(){});
+    else if(el.dataset.q)vFetch(el.dataset.label||el.dataset.q,el.dataset.q,el.dataset.style||'',function(){});
+  },
   'v-open':function(el){S.vint.show=el.dataset.k;render(true);},
   'v-refresh':function(el){var c=vLoad()[el.dataset.k];if(!c||VT.busy)return;vFetch(c.label||c.region,c.q,c.style||'',function(){});},
   'v-del':function(el){var c=vLoad();delete c[el.dataset.k];vSave(c);if(S.vint&&S.vint.show===el.dataset.k)S.vint.show='';render(true);},
