@@ -699,7 +699,7 @@ function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(funct
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
 function vLoad(){try{return JSON.parse(localStorage.getItem(VKEY))||{};}catch(e){return {};}}
 function vSave(c){try{localStorage.setItem(VKEY,JSON.stringify(c));}catch(e){}}
-var VT={busy:'',queue:[],total:0,done:0};
+var VT={busy:'',queue:[],total:0,done:0,fails:[],tries:{}};
 function vMissing(){var cache=vLoad(),out=[],now=Date.now();VREGIONS.forEach(function(g){g[1].forEach(function(x){var c=cache[vKey(x[1],x[2])];if(!vHas(x[0])&&!(c&&now-c.at<VSTALE))out.push(x[0]);});});return out;}
 
 var VTIER_PCT={5:97,4:92,3:87,2:82,1:72};
@@ -745,6 +745,23 @@ function vSharedPut(key,chart){
     if(d.exists()&&Date.now()-(d.data().at||0)<300*86400000)return;
     return F.setDoc(ref,{label:String(chart.label||chart.region||'').slice(0,80),q:String(chart.q||'').slice(0,80),style:String(chart.style||'').slice(0,20),sourceNames:(chart.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()});
   }).catch(function(){});
+}
+function vShareAll(){
+  if(!vCloud()){toast('Sign in first (Tools, Account). Sharing needs an account.',8000);return;}
+  var cache=vLoad(),keys=Object.keys(cache),F=C.m.fs,ok=0,skip=0,err='';
+  if(!keys.length){toast('Nothing saved on this device to share.');return;}
+  toast('Sharing '+keys.length+' saved charts…');
+  keys.reduce(function(p,k){return p.then(function(){
+    var c=cache[k],tiers=vTiersOf(c);
+    if(!c||!c.rows||tiers.split(',').length<6){skip++;return;}
+    var ref=F.doc(C.db,'vintageCharts',k);
+    return F.getDoc(ref).then(function(d){
+      if(d.exists()&&Date.now()-(d.data().at||0)<VSTALE){skip++;return;}
+      return F.setDoc(ref,{label:String(c.label||c.region||'').slice(0,80),q:String(c.q||'').slice(0,80),style:String(c.style||'').slice(0,20),sourceNames:(c.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()}).then(function(){ok++;});
+    }).catch(function(e){err=(e&&e.code)||'error';});
+  });},Promise.resolve()).then(function(){
+    toast(err?'Could not share: '+(err==='permission-denied'?'Firebase is blocking it. Publish the vintageCharts rules in the Firebase console.':err):'Shared '+ok+' charts with all users'+(skip?' ('+skip+' were already shared).':'.'),10000);
+  });
 }
 function vFromShared(doc){
   var rows=[];String(doc.tiers||'').split(',').forEach(function(x){var p=x.split(':'),t=+p[1];if(p[0]&&t>=1&&t<=5)rows.push({year:p[0],pct:VTIER_PCT[t],ratings:[],note:''});});
@@ -804,6 +821,7 @@ function vintageView(){
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
     (VT.total?'<section class="card"><p class="notice" role="status"><strong>Filling in regions.</strong> '+VT.done+' of '+VT.total+' done'+(VT.busy?', now '+esc(VT.busy):'')+'. About 20 seconds each. You can leave this screen open and keep browsing.</p><div class="trow"><button class="btn" data-act="v-stop">Stop</button></div></section>':'')+
+    (!VT.total&&VT.fails.length?'<section class="card"><h2 class="h3">Could not fill</h2><ul class="vlist">'+VT.fails.map(function(f){return '<li>'+esc(f.label)+': '+esc(f.why)+'</li>';}).join('')+'</ul><p class="muted">Run Fill all again to retry these, or paste a chart to me and I will build it in.</p></section>':'')+
     chart+savedHtml+
   '</div>';
 }
@@ -812,7 +830,7 @@ function vFetch(label,q,style,done){
   var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},100000);
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
-  var fin=function(ok,msg){clearTimeout(timer);VT.busy='';if(msg)toast(msg,8000);if(S.view==='vintage')render(true);if(done)done(ok);};
+  var fin=function(ok,msg,st){clearTimeout(timer);VT.busy='';if(msg&&!VT.total)toast(msg,8000);if(S.view==='vintage')render(true);if(done)done(ok,st);};
   idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/vintage',{method:'POST',headers:headers,body:JSON.stringify({region:q,style:style}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
@@ -827,9 +845,9 @@ function vFetch(label,q,style,done){
         (x.status===401||x.status===403)?'Vintage lookup needs sign-in or the passcode (Tools).':
         'Vintage lookup failed (status '+x.status+').';
       if(x.status===503||x.status===404||x.status===401||x.status===403)VT.queue=[];
-      fin(false,m);
+      fin(false,m,x.status);
     })
-    .catch(function(){fin(false,'Could not reach the lookup service. Try again.');});
+    .catch(function(){fin(false,'Could not reach the lookup service. Try again.',0);});
 }
 function vNext(){
   if(VT.busy)return;
@@ -840,7 +858,14 @@ function vNext(){
   vSharedGet(k,function(doc){
     VT.busy='';
     if(doc&&doc.tiers&&Date.now()-(doc.at||0)<VSTALE){VSH[k]=doc;VT.done++;vNext();return;}
-    vFetch(label,r[1],r[2],function(ok){VT.done++;vNext();});
+    vFetch(label,r[1],r[2],function(ok,st){
+      if(!ok){
+        var transient=st!==422&&st!==401&&st!==403&&st!==404&&st!==503;
+        if(transient&&!VT.tries[label]&&VT.queue.length+1>0){VT.tries[label]=1;VT.queue.unshift(label);VT.busy='Waiting a moment';if(S.view==='vintage')render(true);setTimeout(function(){VT.busy='';vNext();},20000);return;}
+        VT.fails.push({label:label,why:st===422?'no reliable ratings found':st===0?'could not reach the service':'lookup failed (status '+st+')'});
+      }
+      VT.done++;vNext();
+    });
   });
 }
 
@@ -1056,6 +1081,7 @@ function toolsView(){
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
       toolBtn('go-vintage','Vintage chart','How recent vintages of a wine region were rated. Handy in a wine shop')+
       (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
+      toolBtn('v-share','Share saved vintage charts','Sends the charts saved on this device to all users, so they open on other phones too')+
       toolBtn('go-stats','Stats','How many bottles you have, by type, country, region, grape and vintage')+
       toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
@@ -2738,11 +2764,12 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
   },
   'v-all':function(){
     if(VT.busy||VT.queue.length)return;
-    VT.queue=vMissing();VT.total=VT.queue.length;VT.done=0;
+    VT.queue=vMissing();VT.total=VT.queue.length;VT.done=0;VT.fails=[];VT.tries={};
     if(!VT.total){toast('Every region is already filled in.');return;}
     if(!S.vint)S.vint={sel:'',typed:'',show:''};
     nav('vintage');vNext();
   },
+  'v-share':function(){vShareAll();},
   'v-stop':function(){VT.queue=[];VT.total=0;toast('Stopping after the one in progress. Saved regions are kept.');},
   'go-tools':function(){nav('tools');},
   'flt-toggle':function(){S.fOpen=!S.fOpen;render(true);},
