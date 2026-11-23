@@ -795,7 +795,7 @@ function vintageView(){
       (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
       '</section>';
   }
-  var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p><div class="trow"><button class="btn btn-ghost" data-act="v-export">Export to a file</button><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>':'<section class="card"><h2 class="h3">Saved on this phone</h2><p class="muted">Nothing saved yet. You can bring charts in from a file exported on another device.</p><div class="trow"><label class="btn btn-ghost" for="v-imp">Import from a file</label><input id="v-imp" class="vimp-in" type="file" accept=".json,application/json" hidden></div></section>';
+  var savedHtml=saved.length?'<section class="card"><h2 class="h3">Saved on this phone</h2><div class="vchips">'+saved.map(function(c){return '<button class="chip'+(V.show===vKey(c.q,c.style)?' on':'')+'" data-act="v-open" data-k="'+esc(vKey(c.q,c.style))+'">'+esc(c.label||c.region)+'</button>';}).join('')+'</div><p class="muted">These open instantly, even with no signal.</p></section>':'';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button><h1 class="h2">Vintage chart</h1>'+
     '<section class="card"><p class="muted">How recent vintages of a region turned out. Major regions are built in. Others are looked up once and saved on this phone.</p>'+
     '<div class="field"><label class="flabel" for="v-sel">Region</label><select id="v-sel" class="vsel">'+opts+'</select></div>'+
@@ -2891,19 +2891,6 @@ app.addEventListener('change',function(e){
   var c=e.target.classList;
   if(c&&c.contains('photo-in'))onPhoto(e.target);
   else if(c&&c.contains('batch-in'))onBatchPhotos(e.target);
-  else if(c&&c.contains('vimp-in')){
-    var vf=e.target.files&&e.target.files[0];if(!vf)return;
-    var rd=new FileReader();
-    rd.onload=function(){
-      try{
-        var j=JSON.parse(rd.result),inc=j&&j.charts,cur=vLoad(),n=0;
-        if(!inc||typeof inc!=='object')throw new Error('bad');
-        Object.keys(inc).forEach(function(k){var c=inc[k];if(c&&Array.isArray(c.rows)&&c.rows.length&&(!cur[k]||(c.at||0)>(cur[k].at||0))){cur[k]=c;n++;}});
-        vSave(cur);toast('Imported '+n+(n===1?' chart.':' charts.'),5000);render(true);
-      }catch(err){toast('That file is not a vintage chart export.',6000);}
-    };
-    rd.readAsText(vf);e.target.value='';
-  }
   else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr)vOpen(vr[0],vr[1],vr[2]);else render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
