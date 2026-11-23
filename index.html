@@ -703,13 +703,25 @@ function vHas(label){return !!(VRATED[label]||VBUILT[label]);}
 var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
 function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});
   if(!r)vExtras().forEach(function(x){if(x[0]===label)r=x;});return r;}
+function vRegionsOf(country){
+  var r=[];
+  if(country==='Other regions')return vExtras().filter(function(x){return !x[3];});
+  VREGIONS.forEach(function(g){if(g[0]===country)r=g[1].slice();});
+  vExtras().forEach(function(x){if(x[3]===country)r.push(x);});
+  return r;
+}
+function vCountries(){
+  var c=VREGIONS.map(function(g){return g[0];}),ex=vExtras(),more=[],other=false;
+  ex.forEach(function(x){if(!x[3])other=true;else if(c.indexOf(x[3])<0&&more.indexOf(x[3])<0)more.push(x[3]);});
+  more.sort();return c.concat(more).concat(other?['Other regions']:[]);
+}
 /* Regions someone looked up that are not in the fixed list, from this device and from the shared charts. */
 function vExtras(){
   var known={},out=[],seen={};
   VREGIONS.forEach(function(g){g[1].forEach(function(x){known[vKey(x[1],x[2])]=1;});});
-  function add(c){if(!c||!(c.label||c.region))return;var k=vKey(c.q||c.label,c.style||'');if(known[k]||seen[k])return;seen[k]=1;out.push([c.label||c.region,c.q||c.label,c.style||'']);}
-  var cache=vLoad();Object.keys(cache).forEach(function(k){add(cache[k]);});
+  function add(c){if(!c||!(c.label||c.region))return;var k=vKey(c.q||c.label,c.style||'');if(known[k]||seen[k])return;seen[k]=1;out.push([c.label||c.region,c.q||c.label,c.style||'',String(c.country||'').slice(0,30)]);}
   if(VSHL)Object.keys(VSHL).forEach(function(k){if(VSHL[k]&&VSHL[k].tiers)add(VSHL[k]);});
+  var cache=vLoad();Object.keys(cache).forEach(function(k){add(cache[k]);});
   out.sort(function(a,b){return a[0]<b[0]?-1:1;});return out;
 }
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
@@ -759,7 +771,7 @@ function vSharedPut(key,chart){
   var F=C.m.fs,ref=F.doc(C.db,'vintageCharts',key);
   F.getDoc(ref).then(function(d){
     if(d.exists()&&Date.now()-(d.data().at||0)<300*86400000)return;
-    return F.setDoc(ref,{label:String(chart.label||chart.region||'').slice(0,80),q:String(chart.q||'').slice(0,80),style:String(chart.style||'').slice(0,20),sourceNames:(chart.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()});
+    return F.setDoc(ref,Object.assign({label:String(chart.label||chart.region||'').slice(0,80),q:String(chart.q||'').slice(0,80),style:String(chart.style||'').slice(0,20),sourceNames:(chart.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()},chart.country?{country:String(chart.country).slice(0,30)}:{}));
   }).catch(function(){});
 }
 var VSHL=null,VSHLtried=false;
@@ -782,7 +794,7 @@ function vShareAll(){
     var ref=F.doc(C.db,'vintageCharts',k);
     return F.getDoc(ref).then(function(d){
       if(d.exists()&&Date.now()-(d.data().at||0)<VSTALE){skip++;return;}
-      return F.setDoc(ref,{label:String(c.label||c.region||'').slice(0,80),q:String(c.q||'').slice(0,80),style:String(c.style||'').slice(0,20),sourceNames:(c.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()}).then(function(){ok++;});
+      return F.setDoc(ref,Object.assign({label:String(c.label||c.region||'').slice(0,80),q:String(c.q||'').slice(0,80),style:String(c.style||'').slice(0,20),sourceNames:(c.sourceNames||[]).slice(0,5),tiers:tiers,at:Date.now()},c.country?{country:String(c.country).slice(0,30)}:{})).then(function(){ok++;});
     }).catch(function(e){err=(e&&e.code)||'error';});
   });},Promise.resolve()).then(function(){
     toast(err?'Could not share: '+(err==='permission-denied'?'Firebase is blocking it. Publish the vintageCharts rules in the Firebase console.':err):'Shared '+ok+' charts with all users'+(skip?' ('+skip+' were already shared).':'.'),10000);
@@ -791,7 +803,7 @@ function vShareAll(){
 function vFromShared(doc){
   var rows=[];String(doc.tiers||'').split(',').forEach(function(x){var p=x.split(':'),t=+p[1];if(p[0]&&t>=1&&t<=5)rows.push({year:p[0],pct:VTIER_PCT[t],ratings:[],note:''});});
   rows.sort(function(a,b){return b.year-a.year;});
-  return {label:doc.label,q:doc.q,style:doc.style,builtin:true,rated:true,shared:true,rows:rows,sourceNames:doc.sourceNames||[],sources:[],at:doc.at||0};
+  return {label:doc.label,q:doc.q,style:doc.style,country:doc.country||'',builtin:true,rated:true,shared:true,rows:rows,sourceNames:doc.sourceNames||[],sources:[],at:doc.at||0};
 }
 var VBUILT_AT=new Date(2026,10,23).getTime();
 var VSTALE=300*86400000;
@@ -821,8 +833,8 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var ex=vExtras(),countries=VREGIONS.map(function(g){return g[0];}).concat(ex.length?['Other regions']:[]);
-  var regs=!V.country?[]:V.country==='Other regions'?ex:(function(){var r=[];VREGIONS.forEach(function(g){if(g[0]===V.country)r=g[1];});return r;})();
+  var countries=vCountries();
+  var regs=V.country?vRegionsOf(V.country):[];
   var mark=function(x){return cache[vKey(x[1],x[2])]||vHas(x[0])||(VSHL&&VSHL[vKey(x[1],x[2])]&&VSHL[vKey(x[1],x[2])].tiers)?' ✓':'';};
   var copts='<option value="">Choose a country…</option>'+countries.map(function(c){return '<option value="'+esc(c)+'"'+(V.country===c?' selected':'')+'>'+esc(c)+'</option>';}).join('');
   var opts='<option value="">Choose a region…</option>'+regs.map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+mark(x)+'</option>';}).join('');
@@ -2968,7 +2980,7 @@ app.addEventListener('change',function(e){
   else if(c&&c.contains('vcountry')){
     if(!S.vint)S.vint={sel:'',typed:'',show:'',country:''};
     S.vint.country=e.target.value;S.vint.sel='';S.vint.typed='';
-    var rg=[];if(S.vint.country==='Other regions')rg=vExtras();else VREGIONS.forEach(function(g){if(g[0]===S.vint.country)rg=g[1];});
+    var rg=vRegionsOf(S.vint.country);
     if(rg.length===1){S.vint.sel=rg[0][0];vOpen(rg[0][0],rg[0][1],rg[0][2]);}else render(true);}
   else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr)vOpen(vr[0],vr[1],vr[2]);else render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}

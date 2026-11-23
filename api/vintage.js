@@ -48,7 +48,7 @@ async function call(key, body) {
       body: JSON.stringify(Object.assign({ model: MODEL }, body))
     });
   } catch (e) {
-    console.error('price: network error', e && e.message);
+    console.error('vintage: network error', e && e.message);
     return { fail: [502, { error: 'upstream_unreachable' }] };
   }
   if (!r.ok) {
@@ -57,7 +57,7 @@ async function call(key, body) {
     let msg = '';
     try { const j = JSON.parse(raw); msg = (j.error && j.error.message) || ''; } catch (e) { msg = raw; }
     msg = String(msg).replace(/\s+/g, ' ').trim().slice(0, 160);
-    console.error('price: Anthropic API returned', r.status, raw.slice(0, 300));
+    console.error('vintage: Anthropic API returned', r.status, raw.slice(0, 300));
     return { fail: [502, { error: msg ? 'upstream_error: ' + msg : 'upstream_error', status: r.status }] };
   }
   try { return { data: await r.json() }; } catch (e) { return { fail: [502, { error: 'upstream_bad_reply' }] }; }
@@ -83,12 +83,15 @@ const RECORD_SYSTEM = [
   'Always call the record_vintages tool.'
 ].join('\n');
 
+const COUNTRIES = ['France', 'Italy', 'Spain', 'Portugal', 'Germany', 'Austria', 'Switzerland', 'Hungary', 'Greece', 'United States', 'Canada', 'Mexico', 'Australia', 'New Zealand', 'Chile', 'Argentina', 'Uruguay', 'Brazil', 'South Africa', 'Israel', 'Lebanon', 'Georgia', 'Other'];
+
 const TOOL = {
   name: 'record_vintages',
   description: 'Record the vintage ratings found for the region.',
   input_schema: {
     type: 'object',
     properties: {
+      country: { type: 'string', enum: COUNTRIES, description: 'The country this wine region is in; Other only if none fits' },
       years: {
         type: 'array',
         items: {
@@ -113,7 +116,7 @@ const TOOL = {
         }
       }
     },
-    required: ['years']
+    required: ['years', 'country']
   }
 };
 
@@ -201,6 +204,7 @@ async function handle(req, res) {
   const block = (rec.data.content || []).find((b) => b.type === 'tool_use');
   const list = (block && block.input && Array.isArray(block.input.years)) ? block.input.years : [];
 
+  const country = block && block.input && COUNTRIES.includes(block.input.country) && block.input.country !== 'Other' ? block.input.country : '';
   const hay = notes.toLowerCase();
   const rows = [];
   const used = new Set();
@@ -231,6 +235,7 @@ async function handle(req, res) {
   const chart = {
     region,
     style,
+    country,
     at: Date.now(),
     sourceNames: Array.from(used).slice(0, 5),
     rows,
