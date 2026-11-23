@@ -671,22 +671,28 @@ var VREGIONS=[
  ['Southern hemisphere',[['Australia Barossa','Barossa Valley Shiraz','red'],['Australia overall','Australia',''],['New Zealand','New Zealand',''],['Chile','Chile',''],['Argentina','Argentina Mendoza','red'],['South Africa','South Africa','']]]
 ];
 /* Built-in rough guide: my own general-knowledge tiers for 2005 to 2022, one digit per year.
-   5 outstanding, 4 excellent, 3 good, 2 average, 1 weak. Not copied from any published chart. */
+   5 outstanding, 4 excellent, 3 good, 2 average, 1 weak. Not copied from any published chart.
+   VRATED: tiers combined from published ratings of several critics, converted to one scale and averaged per year. */
 var VBUILT_START=2005;
 var VBUILT={
- 'Bordeaux red':'535335332325345543',
- 'Burgundy red':'534445354345353545',
- 'Burgundy white':'433445434545343545',
- 'Champagne':'332523154343343442',
- 'Rhône north':'435254333225544545',
- 'Rhône south':'435254333225543545',
- 'Piedmont (Barolo, Barbaresco)':'344334523444352353',
- 'Tuscany (Chianti, Brunello)':'344334334325533545',
- 'Rioja':'533335432354543443',
  'Napa Valley':'445435225554453523',
- 'Oregon':'332433253453433244',
  'Germany Riesling':'434454543354354344'
 };
+var VRATED={
+ 'Rioja':['Wine Spectator, Wine Enthusiast, Decanter','2024:3,2022:3,2021:4,2020:2,2019:3,2018:2,2017:1,2016:4,2015:3,2014:2,2013:1,2012:3,2011:3'],
+ 'Bordeaux red':['Wine Spectator, Decanter, Berry Bros & Rudd','2023:2,2022:4,2021:1,2020:3,2019:4,2018:4,2017:3,2016:5,2015:4,2014:4,2013:1,2012:2,2011:3'],
+ 'Burgundy white':['Wine Spectator, Burgundy Report','2023:4,2022:4,2021:4,2020:4,2019:3,2018:3,2017:4,2016:3,2015:3,2014:4,2013:3,2012:3,2011:3'],
+ 'Champagne':['Wine Spectator','2018:4,2017:1,2016:3,2015:4,2014:4,2013:4,2012:4,2011:1'],
+ 'Piedmont (Barolo, Barbaresco)':['Wine Spectator','2021:5,2020:4,2019:5,2017:4,2016:5,2015:4,2014:3,2013:5,2012:4,2011:4'],
+ 'Oregon':['Wine Spectator, Wine Enthusiast','2024:4,2023:4,2022:4,2021:4,2020:2,2019:4,2018:4,2017:4,2016:4,2015:4,2014:4,2013:3,2012:4,2011:2'],
+ 'Australia Barossa':['Wine Enthusiast, Wine Spectator, Oldfield Cellars, Halliday','2025:4,2024:3,2023:3,2022:3,2021:5,2020:2,2019:4,2018:4,2017:3,2016:4,2015:3,2014:3,2013:4,2012:4,2011:1'],
+ 'Burgundy red':['Wine Spectator','2023:5,2022:5,2020:5,2019:5,2018:4,2017:4,2016:5,2015:5,2014:4,2013:3,2012:4,2011:3'],
+ 'Rhône north':['Wine Spectator, Wine Enthusiast, Jeb Dunnuck','2024:4,2023:4,2022:4,2021:2,2020:4,2019:5,2018:4,2017:4,2016:4,2015:5,2014:2,2013:2,2012:3,2011:3'],
+ 'Rhône south':['Wine Spectator, Wine Enthusiast, Jeb Dunnuck, Decanter','2024:2,2023:3,2022:4,2021:2,2020:4,2019:4,2018:3,2017:4,2016:5,2015:4,2014:2,2013:2,2012:3,2011:3'],
+ 'Tuscany (Chianti, Brunello)':['Wine Spectator','2023:3,2022:3,2021:5,2020:4,2019:4,2018:4,2017:4,2016:5,2015:5,2014:2,2013:4,2012:2,2011:4'],
+ 'Ribera del Duero':['Wine Spectator, Wine Enthusiast','2024:4,2023:3,2022:4,2021:4,2020:3,2019:3,2018:2,2017:2,2016:4,2015:3,2014:2,2013:1,2012:3,2011:3']
+};
+function vHas(label){return !!(VRATED[label]||VBUILT[label]);}
 var VPOPULAR=['Bordeaux red','Burgundy red','Burgundy white','Champagne','Rhône north','Rhône south','Piedmont (Barolo, Barbaresco)','Tuscany (Chianti, Brunello)','Rioja','Napa Valley','Oregon','Australia Barossa'];
 function vFind(label){var r=null;VREGIONS.forEach(function(g){g[1].forEach(function(x){if(x[0]===label)r=x;});});return r;}
 function vKey(q,style){return norm((q||'')+' '+(style||'')).replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
@@ -696,9 +702,14 @@ var VT={busy:'',queue:[],total:0,done:0};
 
 var VTIER_PCT={5:97,4:92,3:87,2:82,1:72};
 function vBuilt(label){
-  var str=VBUILT[label];if(!str)return null;
-  var rows=[];
-  for(var i=str.length-1;i>=0;i--){var d=+str.charAt(i);if(d>=1&&d<=5)rows.push({year:String(VBUILT_START+i),pct:VTIER_PCT[d],ratings:[],note:''});}
+  var rows=[],rated=VRATED[label],str=VBUILT[label],i;
+  if(rated){
+    rated[1].split(',').forEach(function(x){var p=x.split(':');rows.push({year:p[0],pct:VTIER_PCT[+p[1]],ratings:[],note:''});});
+    rows.sort(function(a,b){return b.year-a.year;});
+    return {label:label,builtin:true,rated:true,rows:rows,sourceNames:rated[0].split(', '),sources:[],at:0};
+  }
+  if(!str)return null;
+  for(i=str.length-1;i>=0;i--){var d=+str.charAt(i);if(d>=1&&d<=5)rows.push({year:String(VBUILT_START+i),pct:VTIER_PCT[d],ratings:[],note:''});}
   return {label:label,builtin:true,rows:rows,sourceNames:[],sources:[],at:0};
 }
 function vTier(p){
@@ -712,13 +723,13 @@ function vTier(p){
 function vAge(at){var d=Math.floor((Date.now()-at)/86400000);return d<1?'today':(d<45?d+(d===1?' day':' days')+' ago':Math.round(d/30)+' months ago');}
 function vintageView(){
   var V=S.vint||(S.vint={sel:'',typed:'',show:''}),cache=vLoad();
-  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||VBUILT[x[0]]?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
+  var opts='<option value="">Choose a region…</option>'+VREGIONS.map(function(g){return '<optgroup label="'+esc(g[0])+'">'+g[1].map(function(x){return '<option value="'+esc(x[0])+'"'+(V.sel===x[0]?' selected':'')+'>'+esc(x[0])+(cache[vKey(x[1],x[2])]||vHas(x[0])?' ✓':'')+'</option>';}).join('')+'</optgroup>';}).join('');
   var busy=!!VT.busy;
   var saved=Object.keys(cache).map(function(k){return cache[k];}).sort(function(a,b){return (b.at||0)-(a.at||0);});
   var shown=V.show&&(V.show.indexOf('b:')===0?vBuilt(V.show.slice(2)):cache[V.show]);
   var chart='';
   if(shown){
-    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">'+(shown.builtin?'Built-in rough guide, 2005 to 2022. From general wine knowledge, not a published chart, so treat it as approximate.':'Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.')+'</p></div></div>'+
+    chart='<section class="card"><div class="lrow"><div><h2 class="h3">'+esc(shown.label||shown.region)+'</h2><p class="muted">'+(shown.rated?'Built-in guide. Ratings from '+esc(shown.sourceNames.join(', '))+' combined into five tiers. Checked November 2026.':shown.builtin?'Built-in rough guide, 2005 to 2022. From general wine knowledge, not a published chart, so treat it as approximate.':'Rated by '+esc((shown.sourceNames||[]).join(', ')||'published sources')+'. Researched '+vAge(shown.at)+'.')+'</p></div></div>'+
       (shown.builtin?'<div class="vleg"><span class="vk v5"></span>Outstanding<span class="vk v4"></span>Excellent<span class="vk v3"></span>Good<span class="vk v2"></span>Average<span class="vk v1"></span>Weak</div>':'<div class="vleg"><span class="vk v5"></span>95+<span class="vk v4"></span>90–94<span class="vk v3"></span>85–89<span class="vk v2"></span>80–84<span class="vk v1"></span>70–79<span class="vk v0"></span>under 70</div>')+
       '<ul class="vlist">'+shown.rows.map(function(r){
         var t=vTier(r.pct),w=Math.max(6,Math.min(100,Math.round((r.pct-60)/40*100)));
@@ -726,7 +737,7 @@ function vintageView(){
         return '<li class="vrow"><span class="vyear">'+esc(r.year)+'</span><span class="vbar"><span class="vfill '+t.c+'" style="width:'+w+'%"></span></span><span class="vscore">'+(shown.builtin?'':'<b>'+r.pct+'</b> ')+'<i>'+(shown.builtin?'':'')+t.t+'</i></span>'+
           (shown.builtin?'':'<span class="vsub">'+(r.note?esc(r.note)+' · ':'')+per+'</span>')+'</li>';
       }).join('')+'</ul>'+
-      (shown.builtin?'<p class="muted vfoot">Years after 2022 are not in the built-in guide. Tap below to look up sourced ratings, including recent years.</p>':'')+'<p class="muted vfoot">'+(shown.builtin?'A region-wide guide in five tiers. Good producers still make fine wine in weaker years.</p>':'A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>')+
+      (shown.rated?'<p class="muted vfoot">Some years rest on a single critic, and years a critic has not rated are missing. Tap below for each critic’s own score.</p>':shown.builtin?'<p class="muted vfoot">Years after 2022 are not in the built-in guide. Tap below to look up sourced ratings, including recent years.</p>':'')+'<p class="muted vfoot">'+(shown.builtin?'A region-wide guide in five tiers. Good producers still make fine wine in weaker years.</p>':'A region-wide guide on a 100-point scale. Scores from other scales are converted. Good producers still make fine wine in weaker years. Ratings come from a web search and are summarized, so check the source for anything important.</p>')+
       (shown.sources&&shown.sources.length?'<p class="muted vfoot">Sources: '+shown.sources.map(function(x){return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">'+esc(x.title)+'</a>';}).join(' · ')+'</p>':'')+
       (shown.builtin?'<div class="trow"><button class="btn" data-act="v-research" data-label="'+esc(shown.label)+'"'+(busy?' disabled':'')+'>Look up sourced ratings (about 20 seconds)</button></div></section>':'<div class="trow"><button class="btn btn-ghost" data-act="v-refresh" data-k="'+esc(V.show)+'"'+(busy?' disabled':'')+'>Refresh ratings</button><button class="btn btn-ghost" data-act="v-del" data-k="'+esc(V.show)+'">Remove</button></div></section>');
   }
@@ -738,7 +749,7 @@ function vintageView(){
     '<div class="field"><label class="flabel" for="v-typed">Or type another region</label><input id="v-typed" data-vtyped value="'+esc(V.typed)+'" placeholder="e.g. Mosel, Chianti Classico, Priorat" autocomplete="off"></div>'+
     '<div class="trow"><button class="btn btn-primary" data-act="v-look"'+(busy?' disabled':'')+'>'+(busy?'Looking up '+esc(VT.busy)+'… about 20 seconds':'Show vintage chart')+'</button></div></section>'+
     chart+savedHtml+
-    (missingPop.length?'<section class="card"><h2 class="h3">Sourced ratings</h2><p class="muted">The built-in guide covers '+Object.keys(VBUILT).length+' regions through 2022. To add sourced ratings and recent years for '+missingPop.length+' of them, run this once on Wi-Fi. Each takes about 20 seconds and uses a little API credit. Optional.</p><div class="trow"><button class="btn" data-act="v-pre"'+(busy?' disabled':'')+'>'+(busy&&VT.total>1?'Looking up '+(VT.done+1)+' of '+VT.total+'…':'Look up sourced ratings')+'</button>'+(VT.total>1&&busy?'<button class="btn btn-ghost" data-act="v-stop">Stop</button>':'')+'</div></section>':'')+
+    (missingPop.length?'<section class="card"><h2 class="h3">Sourced ratings</h2><p class="muted">The built-in guide covers '+(Object.keys(VBUILT).length+Object.keys(VRATED).length)+' regions. To add sourced ratings and recent years for '+missingPop.length+' of them, run this once on Wi-Fi. Each takes about 20 seconds and uses a little API credit. Optional.</p><div class="trow"><button class="btn" data-act="v-pre"'+(busy?' disabled':'')+'>'+(busy&&VT.total>1?'Looking up '+(VT.done+1)+' of '+VT.total+'…':'Look up sourced ratings')+'</button>'+(VT.total>1&&busy?'<button class="btn btn-ghost" data-act="v-stop">Stop</button>':'')+'</div></section>':'')+
   '</div>';
 }
 function vFetch(label,q,style,done){
@@ -2658,7 +2669,7 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     else{toast('Choose a region or type one first.');return;}
     var k=vKey(q,style),cache=vLoad();
     if(cache[k]&&Date.now()-cache[k].at<365*86400000){V.show=k;render(true);return;}
-    if(!typed&&VBUILT[label]){V.show='b:'+label;render(true);return;}
+    if(!typed&&vHas(label)){V.show='b:'+label;render(true);return;}
     vFetch(label,q,style,function(ok){});
   },
   'v-export':function(){
@@ -2856,7 +2867,7 @@ app.addEventListener('change',function(e){
     };
     rd.readAsText(vf);e.target.value='';
   }
-  else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr){var vc=vLoad()[vKey(vr[1],vr[2])];if(vc)S.vint.show=vKey(vr[1],vr[2]);else if(VBUILT[vr[0]])S.vint.show='b:'+vr[0];}render(true);}
+  else if(c&&c.contains('vsel')){if(!S.vint)S.vint={sel:'',typed:'',show:''};S.vint.sel=e.target.value;S.vint.typed='';var vr=vFind(S.vint.sel);if(vr){var vc=vLoad()[vKey(vr[1],vr[2])];if(vc)S.vint.show=vKey(vr[1],vr[2]);else if(vHas(vr[0]))S.vint.show='b:'+vr[0];}render(true);}
   else if(c&&c.contains('srt')){S.sort=e.target.value;saveView();render(true);}
   else if(c&&c.contains('flt')){
     var k=e.target.dataset.k,v=e.target.value;
