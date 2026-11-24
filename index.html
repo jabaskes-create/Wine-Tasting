@@ -1130,7 +1130,7 @@ function toolsView(){
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
       (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
-      (pqBusy()?toolBtn('price-stop','Looking up prices… '+PQ.done+' of '+PQ.total+'. Tap to stop','One quick search per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices ('+S.wines.filter(needsPrice).length+')','One quick search per wine. Takes a few seconds each and uses a little API credit'):''))+
+      (pqBusy()?toolBtn('price-stop','Looking up prices and drink dates… '+PQ.done+' of '+PQ.total+'. Tap to stop','A few quick searches per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices and drink dates ('+S.wines.filter(needsPrice).length+')','A few quick searches per wine. Takes a few seconds each and uses a little API credit'):''))+
       (missingPrices().length?toolBtn('fill-prices','Fill typical prices ('+missingPrices().length+')','Copies the price from each wine’s lookup into its Typical price'):'')+
       (missingGrapes().length?toolBtn('fill-grapes','Fill missing grapes ('+missingGrapes().length+')','Adds the usual grapes for the appellation, tagged Presumed'):'')+
       (missing?toolBtn('fill-countries',S.filling?'Filling in…':'Fill in missing countries ('+missing+')','Adds a country from the region where it is clear',S.filling?' disabled':''):'')+
@@ -1987,8 +1987,8 @@ function liveLookup(w,stillHere,after){
         rs.reviews=Array.isArray(r.reviews)?r.reviews.slice(0,3):[];
         rs.sources=Array.isArray(r.sources)?r.sources.slice(0,5):[];
         w.research=rs;
-        if(r.until&&!(w.drinkby||'').trim()){w.drinkby=r.until;w.src.drinkby='researched';filled++;}
-        if(r.price&&priceInfo(r.price)&&!(w.est||'').trim()){w.est=r.price;w.src.est='researched';filled++;}
+        if(r.until&&(!(w.drinkby||'').trim()||w.src.drinkby==='researched')){if(w.drinkby!==r.until)filled++;w.drinkby=r.until;w.src.drinkby='researched';}
+        if(r.price&&priceInfo(r.price)&&(!(w.est||'').trim()||w.src.est==='researched')){if(w.est!==r.price)filled++;w.est=r.price;w.src.est='researched';}
         if(after)after();
         toast(filled?'Lookup done. Filled '+filled+(filled===1?' empty field.':' empty fields.'):'Lookup done.');
       }else if(x.status===422){
@@ -2013,7 +2013,8 @@ function liveLookup(w,stillHere,after){
 
 /* ---- Price-only lookup: one quick search per wine, run in the background ---- */
 var PQ={q:[],active:0,done:0,total:0,stopped:false,warned:false};
-function needsPrice(w){return !String(w.est||'').trim()&&!w.sampleKey&&!w.example&&(w.name||w.producer);}
+function needsDrink(w){return !isWant(w)&&!drinkEnd(w)&&!(w.lt&&Date.now()-w.lt<2592000000);}
+function needsPrice(w){return !w.sampleKey&&!w.example&&(w.name||w.producer)&&(!String(w.est||'').trim()||needsDrink(w));}
 function pqBusy(){return PQ.active>0||PQ.q.length>0;}
 function pqRefresh(){
   var a=document.activeElement,typing=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
@@ -2041,19 +2042,27 @@ function pqPump(){
 }
 function pqOne(w){
   /* A price already found by a full lookup needs no new search */
-  if(w.research&&priceInfo(w.research.price)){
-    w.est=w.research.price;if(!w.src)w.src={};w.src.est='researched';PQ.active--;PQ.done++;persist();pqPump();return;
+  if(!String(w.est||'').trim()&&w.research&&priceInfo(w.research.price)){
+    w.est=w.research.price;if(!w.src)w.src={};w.src.est='researched';
+    if(!needsPrice(w)){PQ.active--;PQ.done++;persist();pqPump();return;}
   }
+  var wantDrink=needsDrink(w),wantPrice=!String(w.est||'').trim();
   var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},45000);
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
   var fin=function(ok){clearTimeout(timer);PQ.active--;if(ok)PQ.done++;persist();if(S.wines.indexOf(w)!==-1)pqRefresh();pqPump();};
-  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/price',{method:'POST',headers:headers,body:JSON.stringify({wine:pick(w,FIELD_KEYS)}),signal:ctl.signal});})
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/price',{method:'POST',headers:headers,body:JSON.stringify({wine:pick(w,FIELD_KEYS),drink:wantDrink}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
-      if(x.status===200&&x.j&&x.j.price&&priceInfo(x.j.price)){
-        if(S.wines.indexOf(w)!==-1&&!String(w.est||'').trim()){w.est=String(x.j.price).slice(0,40);if(!w.src)w.src={};w.src.est='researched';fin(true);return;}
-        fin(false);return;
+      if(x.status===200&&x.j){
+        var got=false;
+        if(S.wines.indexOf(w)===-1){fin(false);return;}
+        if(!w.src)w.src={};
+        if(wantPrice&&x.j.price&&priceInfo(x.j.price)&&!String(w.est||'').trim()){w.est=String(x.j.price).slice(0,40);w.src.est='researched';got=true;}
+        var yr=/^(19|20)\d{2}$/.test(String(x.j.until||''))?x.j.until:'';
+        if(wantDrink&&yr&&!String(w.drinkby||'').trim()){w.drinkby=yr;w.src.drinkby='researched';got=true;}
+        if(wantDrink)w.lt=Date.now();
+        fin(got);return;
       }
       if(x.status===503||x.status===404||x.status===401||x.status===403){
         /* Not switched on, or not signed in: stop quietly instead of failing for every wine */
@@ -2746,8 +2755,10 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
       toast('Spreadsheet file saved. Open it in Excel or Google Sheets.');
     }catch(e){S.csv=csvText();render(true);}
   },
-  'price-all':function(){var l=S.wines.filter(needsPrice);if(!l.length)return;pqAdd(l);toast('Looking up prices for '+l.length+(l.length===1?' wine':' wines')+'. You can keep using the app.',6000);render(true);},
-  'price-stop':function(){pqStop();toast('Stopped. Prices found so far are kept.');render(true);},
+  'price-all':function(){var l=S.wines.filter(needsPrice);if(!l.length)return;
+    if(l.length>25&&!confirm('Look up prices and drink dates for '+l.length+' wines? Each wine uses a few web searches, which use API credit. You can stop at any time.'))return;
+    pqAdd(l);toast('Looking up prices and drink dates for '+l.length+(l.length===1?' wine':' wines')+'. You can keep using the app.',6000);render(true);},
+  'price-stop':function(){pqStop();toast('Stopped. Results found so far are kept.');render(true);},
   'price-one':function(el){var w=S.wines.filter(function(x){return x.id===el.dataset.id;})[0];if(!w)return;pqAdd([w]);toast('Looking up the price…',4000);render(true);},
   'fill-prices':function(){
     var n=0;missingPrices().forEach(function(w){w.est=w.research.price;if(!w.src)w.src={};w.src.est='researched';n++;});
