@@ -1186,7 +1186,7 @@ function reviewView(){
     '<h1 class="h2">'+(edit?'Edit wine':'Review the label')+'</h1>'+
     (edit?'':(d.menuDraft?'<p class="notice"><strong>From a wine list.</strong> Only what the list printed is filled in. Add your tasting below and save.</p>':d.manual?'<p class="notice"><strong>Typed in by you.</strong> Add what you know, even just a name. A bottle you have not found yet is fine.</p>':d.live?'<p class="notice"><strong>Read from your photo.</strong> Labels can be misread, so check each field before saving.'+(d.unsureN?' Fields marked Check this are the ones it was least sure about.':'')+(d.used?' It used '+d.used+(d.used===1?' of your past corrections.':' of your past corrections.'):'')+'</p>':'<p class="notice"><strong>Sample bottle.</strong> This is a made-up wine, not your photo. Check each field before saving.</p>'))+
     dupHtml+photos+
-    '<section class="card"><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
+    '<section class="card"><p class="muted" style="margin-bottom:8px">Winery in the name box, or the other way round? <button class="link" data-act="swap-np">Swap name and producer</button></p><div class="grid2">'+FIELDS.map(function(f){return fieldHtml(f,d);}).join('')+'</div></section>'+
     '<section class="card"><div class="lrow"><div><h2 class="h3">Fill the gaps</h2><p class="muted">Searches the web for reviews of this vintage, when to drink it, what it tastes like, food pairings, grapes, region and price. It only fills empty fields, and each result is tagged Researched with its sources.</p></div>'+lookBtn+'</div>'+researchHtml(d.research)+'</section>'+
     '<section class="card"><div class="field"><label class="flabel" for="f-notes">Notes about this wine</label><textarea id="f-notes" rows="3" data-bind="d.notes" placeholder="Anything not tied to one tasting: where you bought it, when to open it">'+esc(d.notes)+'</textarea></div></section>'+
     (edit?'':'<section class="card"><div><h2 class="h3">Your tasting</h2><p class="muted">Optional. You can add tastings later from the wine page.</p></div>'+tastingForm('t',d.t)+'</section>')+
@@ -1979,7 +1979,7 @@ function liveLookup(w,stillHere,after){
         if(!w.src)w.src={};
         var filled=0;
         ['grapes','region'].forEach(function(k){
-          if(r[k]&&(!(w[k]||'').trim()||(k==='grapes'&&w.src[k]==='presumed'))){w[k]=r[k];w.src[k]='researched';filled++;}
+          if(r[k]&&(!(w[k]||'').trim()||(k==='grapes'&&w.src[k]==='presumed')||w.src[k]==='researched')){if(w[k]!==r[k])filled++;w[k]=r[k];w.src[k]='researched';}
         });
         var rs={v:r.v||1};
         ['producer','style','drink','price','vintageNote','taste','structure','serving','from','until'].forEach(function(k){rs[k]=r[k]||'';});
@@ -2627,6 +2627,15 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     var o=el.dataset.target==='t'?(S.draft&&S.draft.t):S.nt;
     if(!o)return;
     var v=+el.dataset.val;o.rating=o.rating===v?0:v;render(true);
+  },
+  'swap-np':function(){
+    var d=S.draft;if(!d)return;
+    var n=d.name||'',p=d.producer||'';
+    if(!n.trim()&&!p.trim())return;
+    d.name=p;d.producer=n;
+    if(!d.src)d.src={};
+    ['name','producer'].forEach(function(k){if(d.src[k]!=='manual')d.src[k]=(d[k]||'').trim()?'edited':'none';});
+    render(true);
   },
   'lookup':function(){
     var d=S.draft;
