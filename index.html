@@ -1121,6 +1121,7 @@ function toolsView(){
   return '<div class="wrap">'+
     '<button class="back" data-act="go-list">← Back</button>'+
     '<h1 class="h2">Tools</h1>'+
+    '<section class="card"><div class="field"><label class="flabel" for="namestyle">How I like wine names written (optional)</label><input id="namestyle" type="text" data-bind="ns.v" maxlength="300" value="'+esc(nameStyle())+'" autocomplete="off" placeholder="e.g. Put the proprietary name in quotation marks, then the grape or wine type"><p class="muted" style="font-size:12px;margin-top:4px">Used when you scan labels. It only rearranges or adds words that are printed on the label. This is saved on this device.</p></div></section>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
       toolBtn('go-vintage','Vintage chart','How recent vintages of a wine region were rated. Handy in a wine shop')+
       (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
@@ -1354,6 +1355,7 @@ function sampleDraft(){
 function finishScan(d){
   if(S.scanMode==='drink'){S.scanning=false;drinkFrom(d);return;}
   S.draft=d;S.scanning=false;S.dup=null;nav('review');}
+function nameStyle(){try{return (localStorage.getItem('bottle-notes-namestyle')||'').slice(0,300);}catch(e){return '';}}
 function buildExamples(){
   return S.wines.filter(function(w){return w.fixed&&w.scanned&&w.photos&&w.photos[0]&&String(w.photos[0]).indexOf('data:image/jpeg')===0;})
     .sort(function(a,b){return (b.added||0)-(a.added||0);}).slice(0,3)
@@ -1375,7 +1377,7 @@ function startScan(){
   var headers={'Content-Type':'application/json'};
   if(S.pass)headers['x-passcode']=S.pass;
   var examples=buildExamples();
-  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples}),signal:ctl.signal});})
+  idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples,nameStyle:nameStyle()}),signal:ctl.signal});})
     .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
     .then(function(x){
       clearTimeout(timer);
@@ -1526,7 +1528,7 @@ function batchReadOne(g,examples,live,B){
     var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort();},60000);
     var headers={'Content-Type':'application/json'};
     if(S.pass)headers['x-passcode']=S.pass;
-    return idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples}),signal:ctl.signal});})
+    return idToken().then(function(idt){if(idt)headers['Authorization']='Bearer '+idt;return fetch('/api/scan',{method:'POST',headers:headers,body:JSON.stringify({images:imgs,examples:examples,nameStyle:nameStyle()}),signal:ctl.signal});})
       .then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {status:r.status,j:j};});})
       .catch(function(){return {status:0,j:{}};})
       .then(function(x){
@@ -2961,6 +2963,7 @@ function bindSet(path,val){
   if(root==='a'){S.a[key]=val;return;}
   if(root==='menuPlace'){S.menuPlace=val;return;}
   if(root==='p'){S.pass=val;try{localStorage.setItem('bottle-notes-pass',val);}catch(e){}return;}
+  if(root==='ns'){try{localStorage.setItem('bottle-notes-namestyle',String(val).slice(0,300));}catch(e){}return;}
   if(root==='d')obj=S.draft;else if(root==='t')obj=S.draft&&S.draft.t;else if(root==='nt')obj=S.nt;
   if(!obj)return;
   obj[key]=val;
