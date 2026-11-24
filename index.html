@@ -1131,7 +1131,7 @@ function toolsView(){
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
       (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
-      (pqBusy()?toolBtn('price-stop','Looking up prices and drink dates… '+PQ.done+' of '+PQ.total+'. Tap to stop','A few quick searches per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices and drink dates ('+S.wines.filter(needsPrice).length+')','A few quick searches per wine. Takes a few seconds each and uses a little API credit'):''))+
+      (pqBusy()?toolBtn('price-stop','Looking up prices and drink dates… '+PQ.done+' of '+PQ.total+'. Tap to stop','A few quick searches per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices and drink dates ('+S.wines.filter(needsPrice).length+')',priceCounts()+' A few quick searches per wine. Uses a little API credit'):''))+
       (missingPrices().length?toolBtn('fill-prices','Fill typical prices ('+missingPrices().length+')','Copies the price from each wine’s lookup into its Typical price'):'')+
       (missingGrapes().length?toolBtn('fill-grapes','Fill missing grapes ('+missingGrapes().length+')','Adds the usual grapes for the appellation, tagged Presumed'):'')+
       (missing?toolBtn('fill-countries',S.filling?'Filling in…':'Fill in missing countries ('+missing+')','Adds a country from the region where it is clear',S.filling?' disabled':''):'')+
@@ -2015,6 +2015,10 @@ function liveLookup(w,stillHere,after){
 
 /* ---- Price-only lookup: one quick search per wine, run in the background ---- */
 var PQ={q:[],active:0,done:0,total:0,stopped:false,warned:false};
+function priceCounts(){
+  var l=S.wines.filter(needsPrice),p=l.filter(function(w){return !String(w.est||'').trim();}).length,d=l.filter(needsDrink).length;
+  return p+' without a price, '+d+' without a drink date.';
+}
 function needsDrink(w){return !isWant(w)&&!drinkEnd(w)&&!(w.lt&&Date.now()-w.lt<2592000000);}
 function needsPrice(w){return !w.sampleKey&&!w.example&&(w.name||w.producer)&&(!String(w.est||'').trim()||needsDrink(w));}
 function pqBusy(){return PQ.active>0||PQ.q.length>0;}
