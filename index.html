@@ -1123,19 +1123,23 @@ function toolsView(){
     '<h1 class="h2">Tools</h1>'+
     '<section class="card"><div class="field"><label class="flabel" for="namestyle">How I like wine names written (optional)</label><input id="namestyle" type="text" data-bind="ns.v" maxlength="300" value="'+esc(nameStyle())+'" autocomplete="off" placeholder="e.g. Put the proprietary name in quotation marks, then the grape or wine type"><p class="muted" style="font-size:12px;margin-top:4px">Used when you scan labels. It only rearranges or adds words that are printed on the label. This is saved on this device.</p></div></section>'+
     '<section class="card"><h2 class="h3">Your cellar</h2><div class="tlist">'+
-      toolBtn('go-vintage','Vintage chart','How recent vintages of a wine region were rated. Handy in a wine shop')+
-      (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
-      toolBtn('v-share','Share saved vintage charts','Sends the charts saved on this device to all users, so they open on other phones too')+
       toolBtn('go-stats','Stats','How many bottles you have, by type, country, region, grape and vintage')+
+    '</div></section>'+
+    ((pqBusy()||S.wines.some(needsPrice)||missingGrapes().length||missing)?'<section class="card"><h2 class="h3">Fill in missing details</h2><div class="tlist">'+
+      (pqBusy()?toolBtn('price-stop','Looking up prices and drink dates… '+PQ.done+' of '+PQ.total+'. Tap to stop','A few quick searches per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices and drink dates ('+S.wines.filter(needsPrice).length+')',priceCounts()+' A few quick searches per wine. Uses a little API credit'):''))+
+      (missingGrapes().length?toolBtn('fill-grapes','Fill missing grapes ('+missingGrapes().length+')','Adds the usual grapes for the appellation, tagged Presumed'):'')+
+      (missing?toolBtn('fill-countries',S.filling?'Filling in…':'Fill in missing countries ('+missing+')','Adds a country from the region where it is clear',S.filling?' disabled':''):'')+
+    '</div></section>':'')+
+    '<section class="card"><h2 class="h3">Spreadsheet</h2><div class="tlist">'+
       toolBtn('imp-open','Import spreadsheet','Bring in an Excel or CSV file, or rows copied from a spreadsheet')+
       toolBtn('download','Download spreadsheet','Save your whole cellar as a CSV file for Excel or Sheets')+
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
       (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
-      (pqBusy()?toolBtn('price-stop','Looking up prices and drink dates… '+PQ.done+' of '+PQ.total+'. Tap to stop','A few quick searches per wine, running in the background'):(S.wines.some(needsPrice)?toolBtn('price-all','Look up missing prices and drink dates ('+S.wines.filter(needsPrice).length+')',priceCounts()+' A few quick searches per wine. Uses a little API credit'):''))+
-      (missingPrices().length?toolBtn('fill-prices','Fill typical prices ('+missingPrices().length+')','Copies the price from each wine’s lookup into its Typical price'):'')+
-      (missingGrapes().length?toolBtn('fill-grapes','Fill missing grapes ('+missingGrapes().length+')','Adds the usual grapes for the appellation, tagged Presumed'):'')+
-      (missing?toolBtn('fill-countries',S.filling?'Filling in…':'Fill in missing countries ('+missing+')','Adds a country from the region where it is clear',S.filling?' disabled':''):'')+
     '</div>'+csvPanel+'</section>'+
+    ('<section class="card"><h2 class="h3">Vintage chart upkeep</h2><p class="muted" style="margin-bottom:8px">The charts themselves are under Vintages at the top of the list.</p><div class="tlist">'+
+      (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
+      toolBtn('v-share','Share saved vintage charts','Sends the charts saved on this device to all users, so they open on other phones too')+
+    '</div></section>')+
     '<section class="card"><h2 class="h3">Account</h2>'+
       (S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<p class="muted">Wines are saved in this browser only. Accounts are not switched on for this site.</p>')+
       (S.user?'':passField)+
