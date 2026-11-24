@@ -781,6 +781,7 @@ function vSharedLoad(){
   F.getDocs(F.collection(C.db,'vintageCharts')).then(function(q){
     var o={};q.forEach(function(d){o[d.id]=d.data();});VSHL=o;
     if(S.view==='vintage'&&!VT.busy)render(true);
+    else if(S.view==='list'&&shareableCharts())render(true);
   }).catch(function(){});
 }
 function vShareAll(){
@@ -3077,10 +3078,12 @@ function importCard(){
   return '<div class="notice"><p><strong>Wines found in this browser.</strong> Copy '+n+(n===1?' wine':' wines')+' into your account?</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="import-yes">Import them</button><button class="btn" data-act="import-no">No thanks</button></div></div>';
 }
 var VSHARE_FLAG='bottle-notes-vshare-asked';
-function shareableCharts(){var c=vLoad(),n=0;Object.keys(c).forEach(function(k){var x=c[k];if(x&&x.rows&&vTiersOf(x).split(',').length>=6)n++;});return n;}
+/* Charts saved on this device that are not already in the shared collection. Needs the shared list to have loaded. */
+function shareableCharts(){var c=vLoad(),n=0;if(!VSHL)return 0;Object.keys(c).forEach(function(k){var x=c[k];if(x&&x.rows&&vTiersOf(x).split(',').length>=6&&!(VSHL[k]&&VSHL[k].tiers))n++;});return n;}
 function shareCard(){
   if(!vCloud())return '';
   try{if(localStorage.getItem(VSHARE_FLAG))return '';}catch(e){return '';}
+  vSharedLoad();
   var n=shareableCharts();
   if(!n)return '';
   return '<div class="notice"><p><strong>Share your vintage charts?</strong> You have '+n+(n===1?' vintage chart':' vintage charts')+' saved on this device. Sharing lets everyone, including you on another phone, open them instantly instead of waiting for a new lookup. Only the region name and the ratings by year are shared, nothing from your cellar.</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="vshare-yes">Share them</button><button class="btn" data-act="vshare-no">No thanks</button></div></div>';
