@@ -23,8 +23,9 @@ const SYSTEM = [
 ].join('\n');
 
 const DRINK_SYSTEM = [
-  'Also find the recommended drinking window for this wine and vintage: the first year to drink it and the last year to drink it, as published by the producer, the importer, a critic or a community site such as CellarTracker.',
-  'Report only a window a source states, or an explicit "drink by" year. Never estimate it from memory. If the vintage is non-vintage or no source gives a window, leave both years empty.'
+  'This request needs TWO things: the price AND the recommended drinking window for this wine and vintage (the first year to drink it and the last year to drink it).',
+  'Run at least one search aimed specifically at the drinking window, for example the wine, producer and vintage with "drink window" or "drink by", or the producer\'s data sheet, a critic review, or CellarTracker. Do not call record_price until you have tried that. You may use the other searches for the price. You have up to three searches in all, and this overrides the earlier advice to search only once or twice.',
+  'Report only a window or an explicit drink-by year that a source states. Never estimate it from memory. If the wine is non-vintage or no source states a window, leave both years empty.'
 ].join('\n');
 
 const TOOL = {
