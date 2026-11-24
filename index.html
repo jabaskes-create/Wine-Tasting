@@ -1136,10 +1136,9 @@ function toolsView(){
       toolBtn('csv','Copy for spreadsheet','Copy it and paste straight into Sheets or Excel')+
       (impCount?toolBtn('del-imported',S.confirm==='imp'?'Tap again to delete '+impCount+(impCount===1?' wine':' wines'):'Delete imported wines ('+impCount+')','Removes only wines that came from an import, so you can import again'):'')+
     '</div>'+csvPanel+'</section>'+
-    ('<section class="card"><h2 class="h3">Vintage chart upkeep</h2><p class="muted" style="margin-bottom:8px">The charts themselves are under Vintages at the top of the list.</p><div class="tlist">'+
-      (vMissing().length?toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users'):'')+
-      toolBtn('v-share','Share saved vintage charts','Sends the charts saved on this device to all users, so they open on other phones too')+
-    '</div></section>')+
+    (vMissing().length?'<section class="card"><h2 class="h3">Vintage chart upkeep</h2><p class="muted" style="margin-bottom:8px">The charts themselves are under Vintages at the top of the list.</p><div class="tlist">'+
+      toolBtn('v-all','Fill all vintage regions ('+vMissing().length+' left)','Looks up every region not built in yet, once, and shares it with all users')+
+    '</div></section>':'')+
     '<section class="card"><h2 class="h3">Account</h2>'+
       (S.user?'<p class="muted">Signed in as '+esc(S.user.email||'your account')+'.</p>':'<p class="muted">Wines are saved in this browser only. Accounts are not switched on for this site.</p>')+
       (S.user?'':passField)+
@@ -1155,7 +1154,7 @@ function listView(){
   var hasEx=S.wines.some(function(w){return w.example;});
   return '<div class="wrap">'+
     '<header class="top"><div><h1>Bottle Notes</h1><p class="sub">'+subLine()+'</p></div><div class="hbtns"><button class="hlink" data-act="go-vintage">Vintages</button><button class="iconbtn" data-act="go-tools" aria-label="Tools and settings" title="Tools and settings">'+GEAR+'</button><button class="btn btn-primary" data-act="go-scan">Scan label or menu</button></div></header>'+
-    (S.user?verifyCard()+importCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
+    (S.user?verifyCard()+importCard()+shareCard():'<p class="demo"><span class="tag tag-edited">Local</span><span>Wines are saved in this browser only. Accounts are not switched on for this site.</span></p>')+
     shelfBar()+
     '<div class="searchbar"><input id="q" type="search" data-search value="'+esc(S.q)+'" placeholder="'+(S.shelf==='want'?'Search your Want to try list':(S.shelf==='coll'?'Search your collection':'Search name, grape, region, place, taster'))+'" autocomplete="off" aria-label="Search this list"></div>'+
     '<div class="chips" role="group" aria-label="Filter by type">'+chip('all','All')+present.map(function(t){return chip(t,TYPE_LABEL[t]);}).join('')+'</div>'+sortFilterBar()+
@@ -2843,6 +2842,8 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     nav('vintage');vNext();
   },
   'v-share':function(){vShareAll();},
+  'vshare-yes':function(){try{localStorage.setItem(VSHARE_FLAG,'1');}catch(e){}vShareAll();render(true);},
+  'vshare-no':function(){try{localStorage.setItem(VSHARE_FLAG,'1');}catch(e){}render(true);},
   'v-stop':function(){VT.queue=[];VT.total=0;toast('Stopping after the one in progress. Saved regions are kept.');},
   'go-tools':function(){nav('tools');},
   'flt-toggle':function(){S.fOpen=!S.fOpen;render(true);},
@@ -3074,6 +3075,15 @@ function importCard(){
   var n=S.importLocal?S.importLocal.length:0;
   if(!n)return '';
   return '<div class="notice"><p><strong>Wines found in this browser.</strong> Copy '+n+(n===1?' wine':' wines')+' into your account?</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="import-yes">Import them</button><button class="btn" data-act="import-no">No thanks</button></div></div>';
+}
+var VSHARE_FLAG='bottle-notes-vshare-asked';
+function shareableCharts(){var c=vLoad(),n=0;Object.keys(c).forEach(function(k){var x=c[k];if(x&&x.rows&&vTiersOf(x).split(',').length>=6)n++;});return n;}
+function shareCard(){
+  if(!vCloud())return '';
+  try{if(localStorage.getItem(VSHARE_FLAG))return '';}catch(e){return '';}
+  var n=shareableCharts();
+  if(!n)return '';
+  return '<div class="notice"><p><strong>Share your vintage charts?</strong> You have '+n+(n===1?' vintage chart':' vintage charts')+' saved on this device. Sharing lets everyone, including you on another phone, open them instantly instead of waiting for a new lookup. Only the region name and the ratings by year are shared, nothing from your cellar.</p><div class="trow" style="margin-top:8px"><button class="btn btn-primary" data-act="vshare-yes">Share them</button><button class="btn" data-act="vshare-no">No thanks</button></div></div>';
 }
 function verifyCard(){
   var u=C.auth&&C.auth.currentUser;
