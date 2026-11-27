@@ -352,7 +352,7 @@ var RESEARCH={
 };
 
 /* ---- Small helpers ---- */
-var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:'',drink:''},fOpen:false};
+var S={wines:[],view:'list',q:'',type:'all',sel:null,draft:null,photos:[],full:[],pass:'',scanning:false,tok:0,looking:false,sampleIdx:0,dup:null,nt:null,addOpen:false,editT:'',confirm:'',csv:'',lastTaster:'',warned:false,cloud:'loading',user:null,a:{email:'',pw:'',mode:'in',err:'',busy:false,info:''},importLocal:null,sort:'added',shelf:'cellar',scanMode:'label',menu:null,menuPlace:'',f:{country:'',region:'',grape:'',rating:0,tasted:'',drink:''},fOpen:false};
 try{var _v=JSON.parse(localStorage.getItem('bottle-notes-view-v1')||'null');if(_v){if(typeof _v.sort==='string')S.sort=_v.sort;if(_v.shelf==='want'||_v.shelf==='coll')S.shelf=_v.shelf;}}catch(e){}
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -1242,9 +1242,10 @@ function detailView(){
     return '<li class="tasting"><div class="thead"><span class="twho">'+esc(t.taster||'Taster not noted')+'</span>'+(t.rating?starsShow(t.rating):'')+'</div>'+
       '<p class="tmeta">'+esc(t.where||'Place not noted')+' · '+esc(fmtDate(t.date))+(t.price?' · Paid '+esc(t.price):'')+'</p>'+
       (t.notes?'<p class="tnote">'+esc(t.notes)+'</p>':'')+
-      '<button class="link danger" data-act="del-tasting" data-id="'+t.id+'">'+(S.confirm==='t:'+t.id?'Tap again to delete':'Delete tasting')+'</button></li>';
+      '<div style="display:flex;gap:16px;flex-wrap:wrap"><button class="link" data-act="edit-tasting" data-id="'+t.id+'">Edit tasting</button><button class="link danger" data-act="del-tasting" data-id="'+t.id+'">'+(S.confirm==='t:'+t.id?'Tap again to delete':'Delete tasting')+'</button></div></li>';
   }).join('');
-  var addForm=S.addOpen?tastingForm('nt',S.nt)+'<div class="actions"><button class="btn btn-primary wide" data-act="save-tasting">Save tasting</button></div>':'';
+  var editing=!!(S.editT&&w.tastings.some(function(t){return t.id===S.editT;}));
+  var addForm=S.addOpen?(editing?'<p class="muted" style="margin:6px 0">Editing this tasting.</p>':'')+tastingForm('nt',S.nt)+'<div class="actions"><button class="btn btn-primary wide" data-act="save-tasting">'+(editing?'Save changes':'Save tasting')+'</button></div>':'';
   return '<div class="wrap"><button class="back" data-act="go-list">← Back</button>'+
     '<header class="dhead">'+(w.photos&&w.photos[0]?'<button class="thumbbtn" data-act="lb-open" data-i="0" aria-label="Open photo" style="all:unset;cursor:zoom-in"><img class="dphoto" src="'+w.photos[0]+'" alt="Label photo"></button>':'')+
     '<div><p class="eyebrow">'+dot(w.type)+'<span>'+TYPE_LABEL[w.type]+(w.example?' · Example':'')+(isWant(w)?' · Want to try':'')+(flagOf(w.country)?' · '+flagOf(w.country)+' '+esc(impCountry(w.country)):'')+'</span></p>'+
@@ -2733,11 +2734,30 @@ var m=el.dataset.v==='menu'?'menu':(el.dataset.v==='receipt'?'receipt':'label');
     if(w.scanned)w.fixed=FIELD_KEYS.some(function(k){return (w.scanned[k]||'')!==(w[k]||'');});
     persist();S.draft=null;toast('Changes saved.');nav('detail');
   },
-  'toggle-add':function(){S.addOpen=!S.addOpen;S.confirm='';render(true);},
+  'toggle-add':function(){
+    if(S.editT&&S.addOpen){S.nt=blankTasting();S.addOpen=false;S.editT='';}
+    else{S.editT='';S.addOpen=!S.addOpen;}
+    S.confirm='';render(true);
+  },
+  'edit-tasting':function(el){
+    var w=getSel(),t=w&&w.tastings.filter(function(x){return x.id===el.dataset.id;})[0];
+    if(!t)return;
+    S.nt={where:t.where||'',date:t.date||today(),taster:t.taster||'',rating:t.rating||0,price:t.price||'',notes:t.notes||''};
+    S.editT=t.id;S.addOpen=true;S.confirm='';render(true);
+    setTimeout(function(){var e=document.getElementById('nt-where');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'});},0);
+  },
   'save-tasting':function(){
     var w=getSel(),t=S.nt;
     if(!w)return;
     if(!hasTasting(t)){toast('Add a place, rating or note first.');return;}
+    if(S.editT){
+      var at=-1;w.tastings.forEach(function(x,i){if(x.id===S.editT)at=i;});
+      if(at!==-1){
+        var nt=tastingFrom(t);nt.id=S.editT;w.tastings[at]=nt;
+        S.nt=blankTasting();S.addOpen=false;S.editT='';persist();toast('Tasting updated.');render(true);return;
+      }
+      S.editT='';
+    }
     w.tastings.push(tastingFrom(t));
     if(t.taster&&t.taster.trim())S.lastTaster=t.taster.trim();
     var wasW=isWant(w);if(wasW){delete w.status;S.shelf='cellar';saveView();}
